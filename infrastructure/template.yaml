@@ -2,9 +2,13 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 
-Description: MediFlow AI serverless API
+Description: MediFlow AI serverless API with DynamoDB
 
 Resources:
+
+  # ----------------------------------------
+  # 1. Health Check Lambda
+  # ----------------------------------------
   HealthFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -19,3 +23,37 @@ Resources:
           Properties:
             Path: /health
             Method: GET
+
+  # ----------------------------------------
+  # 2. DynamoDB Patients Table
+  # ----------------------------------------
+  PatientsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: patient_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: patient_id
+          KeyType: HASH
+
+  # ----------------------------------------
+  # 3. Patient API Lambda (FastAPI + Mangum)
+  # ----------------------------------------
+  PatientApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/
+      Handler: app.main.handler
+      Runtime: python3.12
+      MemorySize: 256
+      Timeout: 15
+
+      Environment:
+        Variables:
+          PATIENTS_TABLE: !Ref PatientsTable
+
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PatientsTable

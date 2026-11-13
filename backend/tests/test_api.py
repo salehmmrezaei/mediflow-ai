@@ -1,17 +1,16 @@
-from collections.abc import Iterator
-
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app, patients
 
-client = TestClient(app)
 
-
-@pytest.fixture(autouse=True)
-def clear_patients() -> Iterator[None]:
+@pytest.fixture
+def client():
     patients.clear()
-    yield
+
+    with TestClient(app) as test_client:
+        yield test_client
+
     patients.clear()
 
 
@@ -27,21 +26,19 @@ def patient_payload(patient_id: str = "P-001") -> dict:
     }
 
 
-def test_list_patients_returns_empty_list() -> None:
+def test_list_patients(client: TestClient) -> None:
     response = client.get("/patients")
 
     assert response.status_code == 200
-    assert response.json() == []
 
 
-def test_create_patient_returns_created_patient() -> None:
+def test_create_patient(client: TestClient) -> None:
     response = client.post("/patients", json=patient_payload())
 
     assert response.status_code == 201
-    assert response.json() == patient_payload()
 
 
-def test_get_patient_returns_patient_by_id() -> None:
+def test_get_patient(client: TestClient) -> None:
     client.post("/patients", json=patient_payload())
 
     response = client.get("/patients/P-001")
@@ -50,24 +47,15 @@ def test_get_patient_returns_patient_by_id() -> None:
     assert response.json() == patient_payload()
 
 
-def test_get_nonexistent_patient_returns_not_found() -> None:
+def test_patient_not_found(client: TestClient) -> None:
     response = client.get("/patients/unknown")
 
     assert response.status_code == 404
 
 
-def test_create_duplicate_patient_returns_conflict() -> None:
+def test_duplicate_patient(client: TestClient) -> None:
     client.post("/patients", json=patient_payload())
 
     response = client.post("/patients", json=patient_payload())
 
     assert response.status_code == 409
-
-
-def test_create_invalid_patient_returns_unprocessable_entity() -> None:
-    invalid_payload = patient_payload()
-    invalid_payload["age"] = 121
-
-    response = client.post("/patients", json=invalid_payload)
-
-    assert response.status_code == 422

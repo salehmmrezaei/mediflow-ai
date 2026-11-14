@@ -1,0 +1,89 @@
+.clinical-assistant {
+  margin-top: 28px;
+  overflow: hidden;
+  border: 1px solid #e0e8e1;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 3px 18px #214d3705;
+  scroll-margin-top: 24px;
+}
+.clinical-assistant-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 26px 28px;
+  border-bottom: 1px solid #edf1eb;
+}
+.clinical-assistant-header .eyebrow { margin-bottom: 7px; }
+.clinical-assistant-header h2 { margin-bottom: 6px; font-size: 19px; font-weight: 650; letter-spacing: -.4px; }
+.clinical-assistant-mark {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border: 1px solid #d5e7de;
+  border-radius: 10px;
+  background: #eef6f1;
+  color: #388276;
+  font-size: 12px;
+  font-weight: 700;
+}
+.clinical-assistant-body { padding: 26px 28px 28px; }
+.clinical-assistant-context {
+  margin-bottom: 24px;
+  padding: 14px 16px;
+  border: 1px solid #e3ece5;
+  border-radius: 8px;
+  background: #f8fbf8;
+  overflow-wrap: anywhere;
+}
+.clinical-assistant-label { display: block; color: #7c8d83; font-size: 10px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
+.clinical-assistant-patient { margin: 4px 0 2px; color: #294f45; font-size: 14px; font-weight: 600; }
+.clinical-assistant-patient-id { color: #80948a; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.clinical-assistant-input-label { display: block; margin-bottom: 9px; color: #315c4f; font-size: 12px; font-weight: 600; }
+.clinical-assistant textarea {
+  display: block;
+  width: 100%;
+  min-height: 110px;
+  padding: 14px 16px;
+  resize: vertical;
+  border: 1px solid #cfddd3;
+  border-radius: 8px;
+  background: #fff;
+  color: #294f45;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.clinical-assistant textarea::placeholder { color: #8a9b90; }
+.clinical-assistant textarea:disabled { background: #f7f9f6; color: #7d8e82; cursor: not-allowed; }
+.clinical-assistant textarea:focus-visible { outline: 3px solid #69b7aa; outline-offset: 3px; }
+.clinical-assistant-input-help { display: flex; justify-content: space-between; gap: 16px; margin: 9px 0 18px; color: #7b8b81; font-size: 11px; line-height: 1.6; }
+.clinical-assistant-input-help span { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.clinical-assistant-loading { display: flex; align-items: center; gap: 10px; margin-top: 24px; color: #597968; font-size: 12px; }
+.clinical-assistant-loading .loading-indicator { width: 18px; height: 18px; margin: 0; flex-shrink: 0; }
+.clinical-assistant-submitted { margin-top: 26px; padding-top: 22px; border-top: 1px solid #e8eee7; overflow-wrap: anywhere; }
+.clinical-assistant-submitted p { margin-top: 7px; color: #587261; font-size: 13px; white-space: pre-wrap; }
+.clinical-assistant-answer { margin-top: 18px; padding: 20px; border: 1px solid #dce8df; border-radius: 8px; background: #f9fcf9; overflow-wrap: anywhere; }
+.clinical-assistant-answer h3 { margin-bottom: 10px; color: #355f4d; font-size: 14px; font-weight: 650; }
+.clinical-assistant-answer-text { color: #426451; font-size: 14px; line-height: 1.8; white-space: pre-wrap; }
+.clinical-assistant-evidence { margin-bottom: 14px; padding: 10px 12px; border: 1px solid #e9dfbd; border-radius: 6px; background: #fcf8ec; color: #8b733c; font-size: 12px; line-height: 1.7; }
+.clinical-assistant-notes { margin-top: 18px; padding-top: 16px; border-top: 1px solid #e5ede4; }
+.clinical-assistant-notes h4 { margin: 0 0 8px; color: #748b79; font-size: 11px; font-weight: 600; }
+.clinical-assistant-notes ul { display: flex; flex-wrap: wrap; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.clinical-assistant-notes li { max-width: 100%; padding: 4px 8px; border: 1px solid #dce9dd; border-radius: 5px; background: #edf5ed; color: #587b5e; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; overflow-wrap: anywhere; }
+.clinical-assistant-error { margin-top: 18px; padding: 18px 20px; border: 1px solid #ecd9d4; border-radius: 8px; background: #fff7f4; color: #95463d; }
+.clinical-assistant-error h3 { margin-bottom: 8px; font-size: 14px; font-weight: 600; }
+.clinical-assistant-error p { font-size: 13px; line-height: 1.7; }
+.clinical-assistant-error .secondary-button { margin-top: 14px; }
+@media (max-width: 560px) {
+  .clinical-assistant { margin-top: 22px; }
+  .clinical-assistant-header { padding: 22px 20px; }
+  .clinical-assistant-header h2 { font-size: 18px; }
+  .clinical-assistant-body { padding: 22px 20px; }
+  .clinical-assistant-input-help { font-size: 10px; }
+  .clinical-assistant textarea { font-size: 16px; }
+  .clinical-assistant-answer, .clinical-assistant-error { padding: 16px; }
+}

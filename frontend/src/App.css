@@ -65,6 +65,11 @@ h1, h2, h3, p { margin: 0; }
 .patient-table tbody tr:hover { background: #fbfdfb; }
 .patient-table tbody th { font-weight: 500; }
 .patient-name { display: block; margin-bottom: 3px; color: #294f45; white-space: nowrap; }
+.patient-select { padding: 0; border: 0; background: transparent; color: #14695f; font: inherit; font-weight: 600; text-align: left; }
+.patient-select:hover { text-decoration: underline; text-underline-offset: 3px; }
+.patient-table tbody tr.is-selected, .patient-table tbody tr.is-selected:hover { background: #f0f7f2; }
+.patient-table tbody tr.is-selected > th { box-shadow: inset 3px 0 #14695f; }
+.patient-selection-label { display: block; margin-top: 5px; color: #286c58; font-size: 10px; font-weight: 600; }
 .patient-id { display: block; color: #91a097; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; overflow-wrap: anywhere; }
 .diagnosis-cell { min-width: 140px; max-width: 280px; color: #61786e; }
 .patient-table time { color: #6e8177; white-space: nowrap; font-size: 11px; }

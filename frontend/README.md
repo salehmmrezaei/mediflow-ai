@@ -1,6 +1,30 @@
 # MediFlow AI frontend
 
-Local React and TypeScript doctor workspace with the AI Clinical Assistant and Step 8.16 discharge-letter integration. AWS Amplify's client library connects directly to the existing Cognito User Pool. Both features use the existing protected patient API and its configured `VITE_API_URL`.
+React and TypeScript frontend with two separate entry paths: a public, browser-only interactive demo at `/demo`, and the authenticated Doctor Workspace at `/`. AWS Amplify's client library connects the Doctor Workspace to the existing Cognito User Pool. Its Clinical Assistant and discharge-letter workflow use the existing protected patient API and configured `VITE_API_URL`.
+
+## Public interactive demo
+
+Start the frontend without adding or changing environment variables:
+
+```sh
+cd frontend
+npm ci
+npm run dev
+```
+
+Open **http://localhost:5173/demo** directly, including in a private window with no Cognito session. The `/demo` entry does not load Amplify authentication, restore a doctor session, or import the production API clients. No AWS or OpenAI request is made by demo interactions, and there is no fallback to authenticated APIs.
+
+The demo displays **PUBLIC DEMO — SIMULATED DATA — NOT FOR CLINICAL USE** throughout. Select fictional Alice Example or Bob Example to inspect their invented notes. Selectable example questions cover admission symptoms, investigations, and insufficient evidence; answers are deterministic, prewritten simulations with supporting note IDs, not live AI output. No unrestricted question entry is provided.
+
+Choose **Generate sample discharge letter** to observe the local `QUEUED → PROCESSING → PENDING_REVIEW` progression. The initial letter has seven sections: Admission reason and Investigations are documented with N001/N002 references; Hospital course, Discharge diagnosis, Discharge medications, Discharge date, and Follow-up remain missing. Edit documented sections and save locally before review. Approval requires explicit confirmation and acknowledgement of the five missing sections and remains unsigned. Rejection requires a nonempty reason. No real Step Functions execution, DynamoDB write, or OpenAI request occurs.
+
+All demo state is held in React memory. **Reset demo**, switching patients, reloading, or leaving the page clears the simulated workflow. Questions and drafts are never saved to localStorage, sessionStorage, external analytics, or remote logging. **Return to Home** opens `/`; **Doctor Sign In** leaves demo mode for `/?signin=1`, where the existing Cognito hosted-login action runs. Demo mode never creates credentials or tokens.
+
+To verify locally, select both patients and all example questions, generate and edit a letter, try approval before and after acknowledging missing sections, and generate a fresh sample to try rejection with an empty reason and then a supplied reason. Refresh `/demo` and confirm the initial state returns. Inspect the browser Network and Application panels to confirm no API/AI requests or stored demo drafts/questions. The existing authenticated application requires its normal configuration as described below.
+
+### Direct access on Vercel
+
+The existing `vercel.json` rewrite sends all frontend paths to `/index.html`, including `/demo` and `/demo/`. Preserve it and the existing Vercel environment variables and Cognito settings. After an explicit deployment through the existing Vercel project, open the deployment's `/demo` URL directly in a private browser window and refresh it. For production, that URL will be **https://mediflow.salehmmrezaei.com/demo** after this branch is deployed; a preview uses its own hostname plus `/demo`. No deployment or infrastructure change is part of this implementation.
 
 ## Existing AWS configuration
 
@@ -65,7 +89,7 @@ The build checks TypeScript and creates `dist/`. Keep the frontend local for thi
 
 ## Login and patient records
 
-**Sign in** opens Cognito's hosted login using OAuth 2.0 authorization code flow with PKCE. Amplify completes the redirect, and auth events update the application when sign-in succeeds or fails. The dashboard displays the current doctor's username and requests `GET /patients` with the session's access token in the `Authorization: Bearer …` header.
+**Doctor Sign In** opens Cognito's hosted login using OAuth 2.0 authorization code flow with PKCE. Amplify completes the redirect, and auth events update the application when sign-in succeeds or fails. The dashboard displays the current doctor's username and requests `GET /patients` with the session's access token in the `Authorization: Bearer …` header.
 
 The API returns a patient array containing `patient_id`, `first_name`, `last_name`, `age`, nested `diagnosis.diagnosis`, `admission_date`, and `status`. The backend selects records belonging to the authenticated doctor's Cognito `sub`. The dashboard includes loading, empty, request error, retry, and refresh states. Sign-out hides the patient dashboard immediately and ends the Cognito session.
 
@@ -123,10 +147,12 @@ npm run build
 
 Vitest, React Testing Library, and jsdom are development-only dependencies. Tests mock authentication and API requests, so they do not require AWS credentials, a doctor account, or live AI calls. The suite covers both feature contracts, generation retries, polling, editing, review confirmation, error handling, and patient isolation. No automated test approves or rejects a live AWS record. The build also checks TypeScript and creates `dist/`.
 
+The public demo tests cover direct public startup, patient selection, deterministic answers and insufficient evidence, simulated generation, local editing, approval confirmation, missing-section acknowledgement, rejection validation, and reset/remount behavior. Isolation checks trap `fetch`, Amplify authentication, production API calls, and browser storage writes. The authenticated regression in [`AuthenticatedWorkspace.integration.test.tsx`](src/components/AuthenticatedWorkspace.integration.test.tsx) keeps the real workspace and API clients: it checks patient loading, asking, job creation and polling, draft retrieval and saving, and unsigned review approval, asserting the Cognito bearer header for every HTTP operation. Its HTTP server and session are synthetic; this verifies frontend compatibility without making live backend requests.
+
 ## Manual verification
 
 1. Open the local URL and confirm the sign-in screen appears.
-2. Choose **Sign in** and use an existing Cognito doctor account on the hosted login page.
+2. Choose **Doctor Sign In** and use an existing Cognito doctor account on the hosted login page.
 3. Confirm the browser returns to `http://localhost:5173/` and displays the doctor's username.
 4. In browser developer tools, confirm `GET /patients` returns HTTP 200 and the table contains only that doctor's synthetic records.
 5. Select a patient, ask a question supported by their synthetic notes, and confirm `POST /patients/{patient_id}/ask` returns HTTP 200 with an answer and supporting note IDs.

@@ -1,0 +1,77 @@
+.demo-banner { position: sticky; top: 0; z-index: 2; margin: 0 -40px; padding: 12px 24px; background: #14695f; color: #fff; text-align: center; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+.demo-navigation { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; }
+.demo-navigation a { text-decoration: none; }
+.demo-home { font-size: 12px; color: #335e55; }
+.demo-home:hover { text-decoration: underline; text-underline-offset: 4px; }
+.demo-chip { display: inline-flex; align-items: center; flex-shrink: 0; padding: 6px 10px; border: 1px solid #dbe5df; border-radius: 6px; background: #f8fbf8; color: #426b5c; font-size: 10px; font-weight: 600; }
+.demo-patient-context { margin-top: 28px; padding: 24px 28px; border: 1px solid #dce8df; border-radius: 12px; background: #f0f7f2; }
+.demo-patient-context .eyebrow { margin-bottom: 6px; }
+.demo-patient-context h2 { font-size: 22px; letter-spacing: -.5px; }
+.demo-source-notes { margin-top: 18px; padding-top: 16px; border-top: 1px solid #dce8df; }
+.demo-source-notes summary { width: fit-content; color: #335e55; cursor: pointer; font-size: 12px; font-weight: 600; }
+.demo-source-notes summary:focus-visible { outline: 3px solid #69b7aa; outline-offset: 4px; }
+.demo-source-notes > p { margin-top: 12px; }
+.demo-notes-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 16px; }
+.demo-notes-grid h3 { margin-bottom: 8px; font-size: 12px; font-weight: 600; }
+.demo-notes-grid p { font-size: 13px; line-height: 1.8; color: #426451; }
+.demo-note-id { display: inline-block; padding: 2px 5px; border-radius: 4px; background: #dfeee4; color: #335e55; font-family: ui-monospace, monospace; }
+.demo-card { margin-top: 28px; overflow: hidden; border: 1px solid #e0e8e1; border-radius: 12px; background: #fff; box-shadow: 0 3px 18px #214d3705; }
+.demo-card-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 26px 28px; border-bottom: 1px solid #edf1eb; }
+.demo-card-heading .eyebrow { margin-bottom: 7px; }
+.demo-card-heading h2 { margin-bottom: 8px; font-size: 19px; font-weight: 650; letter-spacing: -.4px; }
+.demo-card-body { padding: 26px 28px 28px; }
+.demo-question-list { display: flex; flex-wrap: wrap; gap: 10px; }
+.demo-question-list button { text-align: left; }
+.demo-question-list button[aria-pressed='true'] { border-color: #388276; background: #edf6f0; }
+.demo-help { margin-top: 18px; }
+.demo-answer { margin-top: 22px; padding: 20px; border: 1px solid #dce8df; border-radius: 8px; background: #f9fcf9; }
+.demo-answer > p:not(.eyebrow):not(.demo-evidence) { font-size: 14px; line-height: 1.8; }
+.demo-answer .demo-missing { margin-bottom: 10px; font-weight: 600; }
+.demo-evidence { margin-top: 14px; color: #60786b; font-size: 11px; }
+.demo-disclaimer { margin-bottom: 22px; padding: 12px 16px; border-left: 3px solid #b98b36; background: #fcf8ec; color: #765b26; font-size: 12px; line-height: 1.8; }
+.demo-progress { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 20px; color: #426b5c; font-size: 12px; }
+.demo-progress .loading-indicator { width: 18px; height: 18px; margin: 0; }
+.demo-phase { padding: 5px 10px; border-radius: 5px; background: #eaf3ee; color: #315f4c; font-weight: 600; }
+.demo-phase-queued, .demo-phase-processing { color: #526c99; background: #eef2fb; }
+.demo-phase-rejected { color: #95463d; background: #fff0eb; }
+.demo-draft-summary { margin: 24px 0 18px; padding: 18px 20px; border: 1px solid #dce8df; border-radius: 8px; background: #f9fcf9; }
+.demo-draft-summary h3 { font-size: 15px; }
+.demo-draft-summary p { margin-top: 8px; font-size: 12px; }
+.demo-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.demo-section { padding: 18px 20px; border: 1px solid #e3ece5; border-radius: 8px; overflow-wrap: anywhere; }
+.demo-section:last-child { grid-column: 1 / -1; }
+.demo-section-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+.demo-section h3 { font-size: 14px; font-weight: 650; }
+.demo-documented, .demo-missing { font-size: 11px; }
+.demo-documented { color: #326652; }
+.demo-missing { color: #806021; }
+.demo-clinical-text { font-size: 14px; line-height: 1.8; white-space: pre-wrap; }
+.demo-card textarea { display: block; width: 100%; padding: 12px; resize: vertical; border: 1px solid #cfddd3; border-radius: 7px; font: inherit; font-size: 14px; line-height: 1.7; color: #294f45; background: #fff; }
+.demo-card textarea:focus-visible, .demo-card input:focus-visible { outline: 3px solid #69b7aa; outline-offset: 3px; }
+.demo-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
+.demo-reject-button { color: #95463d; border-color: #ecd9d4; }
+.demo-save-message, .demo-rejection { margin: 18px 0; padding: 12px 16px; border: 1px solid #c8e2d2; border-radius: 7px; background: #f0f8f2; color: #315f4c; font-size: 12px; overflow-wrap: anywhere; }
+.demo-rejection { border-color: #ecd9d4; background: #fff7f4; color: #95463d; }
+.demo-session-note { margin-top: 24px; padding-top: 18px; border-top: 1px solid #edf1eb; }
+.demo-review-dialog { width: min(540px, calc(100% - 32px)); max-height: calc(100dvh - 48px); padding: 26px; overflow: auto; border: 1px solid #d5e7de; border-radius: 12px; color: #294f45; box-shadow: 0 18px 70px #173b3740; }
+.demo-review-dialog::backdrop { background: #173b3766; }
+.demo-review-dialog h3 { margin-bottom: 16px; font-size: 18px; }
+.demo-review-dialog p { margin-bottom: 16px; font-size: 13px; line-height: 1.8; }
+.demo-review-dialog label { display: block; margin-bottom: 10px; font-size: 13px; }
+.demo-missing-list { margin-bottom: 20px; padding-left: 20px; color: #765b26; font-size: 12px; line-height: 1.8; }
+.demo-review-dialog .demo-acknowledgement { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid #e9dfbd; border-radius: 7px; background: #fcf8ec; }
+.demo-acknowledgement input { margin-top: 4px; accent-color: #14695f; }
+@media (max-width: 800px) { .demo-banner { margin-right: -24px; margin-left: -24px; } }
+@media (max-width: 700px) { .demo-sections, .demo-notes-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) {
+  .demo-banner { margin-right: -18px; margin-left: -18px; padding: 10px 16px; font-size: 9px; letter-spacing: .5px; }
+  .demo-navigation { width: 100%; justify-content: space-between; gap: 12px; }
+  .demo-card-heading { align-items: flex-start; }
+  .demo-card-heading, .demo-card-body, .demo-patient-context { padding: 22px 20px; }
+  .demo-card-heading .demo-chip, .demo-shell .patient-list-header .demo-chip { display: none; }
+  .demo-question-list { flex-direction: column; }
+  .demo-question-list button { justify-content: flex-start; }
+  .demo-section, .demo-answer { padding: 16px; }
+  .demo-card textarea { font-size: 16px; }
+  .demo-actions > button { flex: 1 1 auto; }
+}

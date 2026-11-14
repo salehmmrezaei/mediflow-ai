@@ -35,6 +35,9 @@ h1, h2, h3, p { margin: 0; }
 .secondary-button { border-color: #dbe5df; background: #fff; color: #335e55; }
 .secondary-button:hover:not(:disabled) { background: #f0f6f2; border-color: #b6cfc3; }
 .login-card > .primary-button { width: 100%; }
+.login-card > .secondary-button { width: 100%; }
+.login-card > a.primary-button { text-decoration: none; }
+.login-demo-note { margin: 12px 0 24px; }
 .login-note { margin-top: 24px; padding-top: 22px; border-top: 1px solid #edf0eb; color: #809088; font-size: 11px; line-height: 1.8; }
 .muted { color: #70827a; font-size: 12px; line-height: 1.7; }
 .error-message { margin: 16px 0; padding: 12px 14px; border: 1px solid #ecd9d4; border-radius: 7px; background: #fff7f4; color: #95463d; font-size: 12px; overflow-wrap: anywhere; }

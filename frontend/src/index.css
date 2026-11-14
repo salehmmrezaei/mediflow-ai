@@ -1,0 +1,18 @@
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #173b37;
+  background: #f6f8f6;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; }
+button, a { -webkit-tap-highlight-color: transparent; }
+button { font: inherit; }
+button:disabled { cursor: wait; opacity: 0.65; }
+button:not(:disabled) { cursor: pointer; }
+button:focus-visible, a:focus-visible { outline: 3px solid #3ba494; outline-offset: 4px; }
+a { color: inherit; }

@@ -1,0 +1,22 @@
+# AWS SAM build output
+.aws-sam/
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Frontend dependencies and build output
+node_modules/
+dist/
+
+# Local environment configuration
+.env
+.env.*
+!.env.example
+*.local
+
+# macOS metadata
+.DS_Store

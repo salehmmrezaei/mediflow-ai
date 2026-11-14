@@ -4,6 +4,14 @@ Transform: AWS::Serverless-2016-10-31
 
 Description: MediFlow AI serverless backend with DynamoDB and Cognito
 
+Parameters:
+  CognitoDomainPrefix:
+    Type: String
+    Description: Unique Cognito domain prefix for the doctor hosted login page
+    MinLength: 1
+    MaxLength: 63
+    AllowedPattern: "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+
 Resources:
 
   # ----------------------------------------
@@ -101,6 +109,24 @@ Resources:
       ExplicitAuthFlows:
         - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+      SupportedIdentityProviders:
+        - COGNITO
+      CallbackURLs:
+        - http://localhost:5173/
+      LogoutURLs:
+        - http://localhost:5173/
+
+  DoctorsUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref CognitoDomainPrefix
+      UserPoolId: !Ref DoctorsUserPool
+      ManagedLoginVersion: 1
 
   # ----------------------------------------
   # 6. Secure Patient HTTP API
@@ -108,6 +134,16 @@ Resources:
   PatientsHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - http://localhost:5173
+        AllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+        AllowHeaders:
+          - Authorization
+          - Content-Type
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
         Authorizers:
@@ -134,3 +170,7 @@ Outputs:
   UserPoolClientId:
     Description: Cognito application Client ID
     Value: !Ref DoctorsUserPoolClient
+
+  CognitoDomain:
+    Description: Cognito hosted login domain (without the https scheme)
+    Value: !Sub "${DoctorsUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com"

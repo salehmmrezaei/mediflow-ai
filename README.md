@@ -186,76 +186,16 @@ Deployment requires a separately configured AWS account, credentials,
 and infrastructure settings. Do not deploy the included development
 configuration blindly into another environment.
 
-## Continuous Integration
-
-GitHub Actions automatically runs:
-
-- Backend automated tests
-- Frontend linting and tests
-- Frontend TypeScript checks and production build
-- AWS SAM template validation
-
-These checks run for pull requests targeting `main` and pushes to `main`.
-
-See [.github/workflows/ci.yml](.github/workflows/ci.yml).
-
 ## Demo
 
-The existing authenticated application is hosted at
-[mediflow.salehmmrezaei.com](https://mediflow.salehmmrezaei.com).
+Try the [interactive demo](https://mediflow.salehmmrezaei.com/demo) with no
+sign-in required. Explore fictional patient records, try sample clinical
+questions, and create, edit, and review a sample discharge letter. All demo
+data and responses are simulated.
 
-The unauthenticated landing page offers **Explore Interactive Demo** (`/demo`)
-and **Doctor Sign In** (the existing Cognito hosted-login flow). The public
-demo is an isolated frontend workspace for recruiters and portfolio visitors:
-
-- Alice Example and Bob Example are fictional static records with invented notes.
-- Selectable questions return prewritten answers and note references, including
-  an insufficient-evidence example. No question is sent to OpenAI or another service.
-- Discharge generation simulates `QUEUED → PROCESSING → PENDING_REVIEW`, with
-  two documented sections and five missing sections. Visitors can edit documented
-  sections, save in memory, confirm an unsigned approval with missing-information
-  acknowledgement, or reject with a reason.
-- Every screen displays **PUBLIC DEMO — SIMULATED DATA — NOT FOR CLINICAL USE**.
-  No real Step Functions execution, DynamoDB write, or OpenAI request occurs.
-- Demo state exists only in React memory. Reloading or starting a new demo session
-  resets it; nothing is saved to localStorage, sessionStorage, analytics, or remote logs.
-
-The `/demo` entry loads no Amplify authentication or production API clients.
-The real Doctor Workspace retains Cognito session restoration and its existing
-JWT-protected, AWS-backed patient, assistant, and discharge APIs. Returning home
-or choosing **Doctor Sign In** leaves demo mode before the normal application loads.
-
-### Verify the public demo
-
-1. Run the frontend locally and open **http://localhost:5173/demo** in a private
-   browser window, without signing in. Select each patient and each example question.
-2. Generate a sample letter and observe all three generation states. Inspect seven
-   sections and note IDs, edit and save a documented section, and try approval with
-   and without missing-information acknowledgement. Generate a fresh sample to
-   check rejection requires a reason.
-3. Refresh `/demo` and confirm the initial state returns. In browser developer tools,
-   confirm these interactions issue no backend or AI requests and store no demo data.
-4. From `frontend`, run `npm run lint`, `npm test`, and `npm run build`. The tests include
-   demo isolation and authenticated Doctor Workspace checks with the real API clients
-   against mocked HTTP, without contacting AWS.
-
-### Vercel routing
-
-No deployment is performed by this change. After explicitly deploying this branch
-through the existing Vercel project, open **https://mediflow.salehmmrezaei.com/demo**
-(or the deployment's preview URL plus `/demo`) directly and refresh it. The existing
-[`frontend/vercel.json`](frontend/vercel.json) catch-all rewrite serves `index.html`
-for `/demo`, so both direct navigation and refresh reach the public entry.
-Keep the project's existing Vercel environment variables and Cognito callback/logout
-configuration unchanged. Verify **Return to Home** and **Doctor Sign In** separately;
-the latter uses an existing doctor account and the existing hosted login.
-
-## Future Improvements
-
-- Patient-specific discharge-job history
-- Stronger clinical evidence verification
-- More comprehensive audit trails
-- Operational dashboards and performance testing
+The [main application](https://mediflow.salehmmrezaei.com) is the authenticated
+Doctor Workspace, powered by AWS and OpenAI. It demonstrates the full
+AI-assisted workflow and requires an existing doctor account to sign in.
 
 ## Source Code
 

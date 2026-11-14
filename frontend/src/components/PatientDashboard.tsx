@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getPatients, type Patient } from '../api/patients'
+import { ClinicalAssistant } from './ClinicalAssistant'
 
 type PatientDashboardProps = {
   username: string
@@ -29,13 +30,19 @@ function formatAdmissionDate(value: string) {
 export function PatientDashboard({ username, onSignOut }: PatientDashboardProps) {
   const [state, setState] = useState<PatientState>({ status: 'loading' })
   const [requestVersion, setRequestVersion] = useState(0)
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
     setState({ status: 'loading' })
     void getPatients(controller.signal)
       .then((patients) => {
-        if (!controller.signal.aborted) setState({ status: 'ready', patients })
+        if (!controller.signal.aborted) {
+          setState({ status: 'ready', patients })
+          setSelectedPatientId((current) => (
+            patients.some((patient) => patient.patient_id === current) ? current : null
+          ))
+        }
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
@@ -49,6 +56,9 @@ export function PatientDashboard({ username, onSignOut }: PatientDashboardProps)
   }, [requestVersion])
 
   const refreshPatients = () => setRequestVersion((version) => version + 1)
+  const selectedPatient = state.status === 'ready'
+    ? state.patients.find((patient) => patient.patient_id === selectedPatientId) ?? null
+    : null
 
   return (
     <section className="dashboard" aria-labelledby="dashboard-title">
@@ -78,7 +88,7 @@ export function PatientDashboard({ username, onSignOut }: PatientDashboardProps)
                 </span>
               )}
             </div>
-            <p className="muted">Synthetic data · visible only to the assigned doctor</p>
+            <p className="muted">Select a patient to ask about their clinical notes.</p>
           </div>
           <button className="secondary-button refresh-button" type="button"
             onClick={refreshPatients} disabled={state.status === 'loading'}>Refresh</button>
@@ -120,10 +130,20 @@ export function PatientDashboard({ username, onSignOut }: PatientDashboardProps)
               </tr></thead>
               <tbody>
                 {state.patients.map((patient) => (
-                  <tr key={patient.patient_id}>
+                  <tr key={patient.patient_id}
+                    className={selectedPatientId === patient.patient_id ? 'is-selected' : undefined}>
                     <th scope="row">
-                      <span className="patient-name">{patient.first_name} {patient.last_name}</span>
+                      <button type="button" className="patient-name patient-select"
+                        aria-label={`Select ${patient.first_name} ${patient.last_name} (${patient.patient_id})`}
+                        aria-pressed={selectedPatientId === patient.patient_id}
+                        aria-controls="clinical-assistant"
+                        onClick={() => setSelectedPatientId(patient.patient_id)}>
+                        {patient.first_name} {patient.last_name}
+                      </button>
                       <span className="patient-id">{patient.patient_id}</span>
+                      {selectedPatientId === patient.patient_id && (
+                        <span className="patient-selection-label">Selected</span>
+                      )}
                     </th>
                     <td>{patient.age}</td>
                     <td className="diagnosis-cell">{patient.diagnosis.diagnosis}</td>
@@ -138,6 +158,7 @@ export function PatientDashboard({ username, onSignOut }: PatientDashboardProps)
           </div>
         )}
       </div>
+      <ClinicalAssistant patient={selectedPatient} />
     </section>
   )
 }

@@ -1,4 +1,3 @@
-
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 
@@ -218,6 +217,19 @@ Resources:
   PatientsHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+
+      RouteSettings:
+        "POST /patients/{patient_id}/ask":
+          ThrottlingBurstLimit: 2
+          ThrottlingRateLimit: 1
+
+        "POST /patients/{patient_id}/discharge-letters":
+          ThrottlingBurstLimit: 2
+          ThrottlingRateLimit: 1
+
 
       CorsConfiguration:
         AllowOrigins:
@@ -527,6 +539,8 @@ Resources:
       Threshold: 1
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref DischargeAlertsTopic
 
   # ----------------------------------------
   # Discharge Workflow Timeout Alarm
@@ -547,6 +561,8 @@ Resources:
       Threshold: 1
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref DischargeAlertsTopic
 
   # ----------------------------------------
   # Recovery Lambda Error Alarm
@@ -567,12 +583,53 @@ Resources:
       Threshold: 1
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
+      AlarmActions:
+        - !Ref DischargeAlertsTopic
 
+  # ----------------------------------------
+  # Operational Alert Notifications
+  # ----------------------------------------
+  DischargeAlertsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${AWS::StackName}-discharge-alerts"
 
+  DischargeAlertsTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref DischargeAlertsTopic
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowAccountManagement
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            Action:
+              - sns:GetTopicAttributes
+              - sns:SetTopicAttributes
+              - sns:AddPermission
+              - sns:RemovePermission
+              - sns:DeleteTopic
+              - sns:Subscribe
+              - sns:ListSubscriptionsByTopic
+              - sns:Publish
+            Resource: !Ref DischargeAlertsTopic
 
-# ----------------------------------------
-# CloudFormation Outputs
-# ----------------------------------------
+          - Sid: AllowCloudWatchAlarmPublishing
+            Effect: Allow
+            Principal:
+              Service: cloudwatch.amazonaws.com
+            Action:
+              - sns:Publish
+            Resource: !Ref DischargeAlertsTopic
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:${AWS::StackName}-*"
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
 Outputs:
 
   PatientApiUrl:
@@ -602,3 +659,7 @@ Outputs:
   DischargeLetterWorkflowArn:
     Description: ARN of the discharge-letter Step Functions workflow
     Value: !Ref DischargeLetterWorkflow
+
+  DischargeAlertsTopicArn:
+    Description: SNS topic for discharge workflow alarms
+    Value: !Ref DischargeAlertsTopic

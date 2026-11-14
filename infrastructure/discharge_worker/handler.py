@@ -84,8 +84,9 @@ def lambda_handler(event, context):
     )
 
 
+
 def mark_failed_handler(event, context):
-    """Mark a PROCESSING job as FAILED after workflow failure."""
+    """Safely mark a queued or processing job as failed."""
 
     job_id = event.get("job_id") if isinstance(event, dict) else None
 
@@ -109,14 +110,18 @@ def mark_failed_handler(event, context):
                 "updated_at = :now, "
                 "failure_code = :code"
             ),
-            ConditionExpression="#status = :processing",
+            ConditionExpression=(
+                "attribute_exists(job_id) "
+                "AND (#status = :queued OR #status = :processing)"
+            ),
             ExpressionAttributeNames={
                 "#status": "status",
             },
             ExpressionAttributeValues={
+                ":queued": "QUEUED",
                 ":processing": "PROCESSING",
                 ":failed": "FAILED",
-                ":code": "DRAFT_GENERATION_FAILED",
+                ":code": "WORKFLOW_TASK_FAILED",
                 ":now": now,
             },
         )
@@ -124,6 +129,7 @@ def mark_failed_handler(event, context):
         return {
             "job_id": job_id,
             "status": "FAILED",
+            "transitioned": True,
         }
 
     except ClientError as exc:
@@ -132,7 +138,6 @@ def mark_failed_handler(event, context):
         if code != "ConditionalCheckFailedException":
             raise
 
-    # Never overwrite an already completed or approved job.
     existing = table.get_item(
         Key={"job_id": job_id},
         ConsistentRead=True,
@@ -140,6 +145,9 @@ def mark_failed_handler(event, context):
 
     return {
         "job_id": job_id,
-        "status": existing.get("status") if existing else "NOT_FOUND",
+        "status": (
+            existing.get("status")
+            if existing else "NOT_FOUND"
+        ),
         "transitioned": False,
     }

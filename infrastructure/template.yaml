@@ -56,15 +56,26 @@ Resources:
       Handler: app.main.handler
       Runtime: python3.12
       MemorySize: 256
-      Timeout: 15
+      Timeout: 30
 
       Environment:
         Variables:
           PATIENTS_TABLE: !Ref PatientsTable
+          CLINICAL_NOTES_TABLE: !Ref ClinicalNotesTable
+          OPENAI_SECRET_ID: mediflow/dev/openai-api-key
+          OPENAI_MODEL: gpt-6-luna
 
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref PatientsTable
+
+        - DynamoDBReadPolicy:
+            TableName: !Ref ClinicalNotesTable
+
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:mediflow/dev/openai-api-key-??????"
+
+
 
       Events:
         ListPatients:
@@ -87,6 +98,15 @@ Resources:
             ApiId: !Ref PatientsHttpApi
             Path: /patients
             Method: POST
+
+        AskPatientApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PatientsHttpApi
+            Path: /patients/{patient_id}/ask
+            Method: POST
+            PayloadFormatVersion: "2.0"
+
 
   # ----------------------------------------
   # 4. Cognito User Pool for Doctors
@@ -153,6 +173,29 @@ Resources:
               issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${DoctorsUserPool}"
               audience:
                 - !Ref DoctorsUserPoolClient
+    
+
+  
+  # ----------------------------------------
+  # 7. Clinical Notes DynamoDB Table
+  # ----------------------------------------
+  ClinicalNotesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+
+      AttributeDefinitions:
+        - AttributeName: patient_id
+          AttributeType: S
+        - AttributeName: note_id
+          AttributeType: S
+
+      KeySchema:
+        - AttributeName: patient_id
+          KeyType: HASH
+        - AttributeName: note_id
+          KeyType: RANGE
+
 
 # ----------------------------------------
 # CloudFormation Outputs
@@ -174,3 +217,7 @@ Outputs:
   CognitoDomain:
     Description: Cognito hosted login domain (without the https scheme)
     Value: !Sub "${DoctorsUserPoolDomain}.auth.${AWS::Region}.amazoncognito.com"
+
+  ClinicalNotesTableName:
+    Description: DynamoDB clinical notes table name
+    Value: !Ref ClinicalNotesTable

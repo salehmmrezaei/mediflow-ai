@@ -53,7 +53,7 @@ function App() {
             <span className="brand-caption">Doctor workspace</span>
           </span>
         </a>
-        <span className="environment-badge">Development · synthetic data</span>
+        <span className="environment-badge">Demo · Synthetic data only</span>
       </header>
 
       {isPending ? (
@@ -99,7 +99,7 @@ function App() {
         </section>
       )}
 
-      <footer className="footer-note">MediFlow AI · Local development</footer>
+      <footer className="footer-note">MediFlow AI · Demonstration environment</footer>
     </main>
   )
 }

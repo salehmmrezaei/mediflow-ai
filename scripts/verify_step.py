@@ -231,6 +231,6 @@ else:
     print("SKIP: Live Doctor B ownership test (no token)")
 
 
-print("\nREVIEW TESTS COMPLETE")
+print("\nREVIEW TESTS COMPLETE ")
 print("Approved job:", approve_job)
 print("Rejected job:", reject_job)

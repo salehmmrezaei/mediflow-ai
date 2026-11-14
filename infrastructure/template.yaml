@@ -200,9 +200,11 @@ Resources:
 
       CallbackURLs:
         - http://localhost:5173/
+        - https://mediflow.salehmmrezaei.com/
 
       LogoutURLs:
         - http://localhost:5173/
+        - https://mediflow.salehmmrezaei.com/
 
   DoctorsUserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
@@ -234,6 +236,7 @@ Resources:
       CorsConfiguration:
         AllowOrigins:
           - http://localhost:5173
+          - https://mediflow.salehmmrezaei.com
 
         AllowMethods:
           - GET

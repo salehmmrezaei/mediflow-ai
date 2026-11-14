@@ -1,15 +1,21 @@
-import './auth'
-import 'aws-amplify/auth/enable-oauth-listener'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { configurationError, restoreDoctorSession } from './auth'
+import { loadApplication } from './loadApplication'
 import './index.css'
-import App from './App.tsx'
+import './App.css'
 
-if (!configurationError) void restoreDoctorSession()
+const root = createRoot(document.getElementById('root')!)
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+void loadApplication(window.location.pathname).then((Application) => {
+  root.render(<StrictMode><Application /></StrictMode>)
+}).catch(() => {
+  // Loading a public demo must never fall back to the authenticated application.
+  root.render(
+    <main className="app-shell">
+      <section className="auth-pending" role="alert">
+        <p>The workspace could not load. Please reload to try again.</p>
+        <a href="/">Return to Home</a>
+      </section>
+    </main>,
+  )
+})

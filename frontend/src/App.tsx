@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { signInWithRedirect, signOut } from 'aws-amplify/auth'
 import { configurationError, getDoctorSession, restoreDoctorSession, subscribeToDoctorSession } from './auth'
 import { PatientDashboard } from './components/PatientDashboard'
@@ -8,8 +8,9 @@ function App() {
   const session = useSyncExternalStore(subscribeToDoctorSession, getDoctorSession)
   const [action, setAction] = useState<'signIn' | 'signOut' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const signInRequested = useRef(false)
 
-  async function handleSignIn() {
+  const handleSignIn = useCallback(async () => {
     setActionError(null)
     setAction('signIn')
     try {
@@ -23,7 +24,17 @@ function App() {
     } finally {
       setAction(null)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('signin') !== '1' || session.status === 'checking' || configurationError || signInRequested.current) return
+    signInRequested.current = true
+    url.searchParams.delete('signin')
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+    // Let the session notification finish before opening hosted login.
+    if (session.status === 'signedOut') queueMicrotask(() => { void handleSignIn() })
+  }, [session.status, handleSignIn])
 
   async function handleSignOut() {
     setActionError(null)
@@ -76,20 +87,22 @@ function App() {
             <p className="eyebrow">YOUR DOCTOR WORKSPACE</p>
             <h1>Welcome to<br />MediFlow AI.</h1>
             <p className="login-description">
-              Sign in to view the patients assigned to you, all in one place.
+              Explore a fictional patient workspace, or sign in to view the patients assigned to you.
             </p>
+            <a className="primary-button" href="/demo">Explore Interactive Demo <span aria-hidden="true">→</span></a>
+            <p className="muted login-demo-note">No sign-in required. Simulated data and responses.</p>
             {configurationError ? (
               <p className="error-message" role="alert">{configurationError}</p>
             ) : (
               <>
                 {error && <p className="error-message" role="alert">{error}</p>}
                 <button
-                  className="primary-button"
+                  className="secondary-button"
                   type="button"
                   disabled={action === 'signIn'}
                   onClick={() => { void handleSignIn() }}
                 >
-                  {action === 'signIn' ? 'Opening sign in…' : 'Sign in'}
+                  {action === 'signIn' ? 'Opening sign in…' : 'Doctor Sign In'}
                   <span aria-hidden="true">↗</span>
                 </button>
                 <p className="login-note">Use your existing doctor account.</p>

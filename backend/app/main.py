@@ -6,6 +6,19 @@ from app.models.patient import Patient
 from app.repositories import patient_repository as repo
 from app.repositories.patient_repository import PatientAlreadyExistsError
 
+from pydantic import BaseModel, Field
+from openai import (
+    APIError,
+    APIConnectionError,
+    APITimeoutError,
+    RateLimitError,
+)
+from botocore.exceptions import BotoCoreError, ClientError
+
+from app.ai import clinical_assistant
+from app.repositories import clinical_note_repository
+
+
 app = FastAPI(
     title="MediFlow AI",
     version="0.1.0",
@@ -32,6 +45,15 @@ def get_current_doctor(request: Request) -> str:
         )
 
     return claims["sub"]
+
+
+
+class AskPatientRequest(BaseModel):
+    question: str = Field(
+        min_length=1,
+        max_length=500,
+    )
+
 
 
 @app.get("/patients", response_model=list[Patient])
@@ -74,6 +96,65 @@ def create_patient(
             detail="Patient ID already exists",
         )
 
+
+@app.post(
+    "/patients/{patient_id}/ask",
+    response_model=clinical_assistant.ClinicalAnswer,
+)
+def ask_patient(
+    patient_id: str,
+    payload: AskPatientRequest,
+    doctor_sub: str = Depends(get_current_doctor),
+):
+    # 1. Verify patient ownership and retrieve notes.
+    try:
+        notes = clinical_note_repository.list_clinical_notes(
+            patient_id=patient_id,
+            doctor_sub=doctor_sub,
+        )
+
+    except clinical_note_repository.PatientAccessDeniedError:
+        raise HTTPException(
+            status_code=404,
+            detail="Patient not found",
+        )
+
+    except (ClientError, BotoCoreError):
+        raise HTTPException(
+            status_code=503,
+            detail="Clinical records temporarily unavailable",
+        )
+
+    # 2. Only authorized evidence reaches the AI.
+    try:
+        return clinical_assistant.answer_question(
+            question=payload.question,
+            notes=notes,
+        )
+
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid question",
+        )
+
+    except (APITimeoutError, TimeoutError):
+        raise HTTPException(
+            status_code=504,
+            detail="AI service timed out",
+        )
+
+    except (RateLimitError, APIConnectionError):
+        raise HTTPException(
+            status_code=503,
+            detail="AI service temporarily unavailable",
+        )
+
+    except (APIError, RuntimeError):
+        raise HTTPException(
+            status_code=502,
+            detail="AI service could not generate a valid answer",
+        )
 
 
 handler = Mangum(app)

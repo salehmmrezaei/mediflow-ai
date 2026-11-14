@@ -10,7 +10,7 @@ Parameters:
     Description: Unique Cognito domain prefix for the doctor hosted login page
     MinLength: 1
     MaxLength: 63
-    AllowedPattern: "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+    AllowedPattern: '^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$'
 
 Resources:
 
@@ -25,6 +25,7 @@ Resources:
       Runtime: python3.12
       MemorySize: 128
       Timeout: 10
+
       Events:
         HealthApi:
           Type: HttpApi
@@ -39,9 +40,11 @@ Resources:
     Type: AWS::DynamoDB::Table
     Properties:
       BillingMode: PAY_PER_REQUEST
+
       AttributeDefinitions:
         - AttributeName: patient_id
           AttributeType: S
+
       KeySchema:
         - AttributeName: patient_id
           KeyType: HASH
@@ -62,6 +65,8 @@ Resources:
         Variables:
           PATIENTS_TABLE: !Ref PatientsTable
           CLINICAL_NOTES_TABLE: !Ref ClinicalNotesTable
+          DISCHARGE_JOBS_TABLE: !Ref DischargeJobsTable
+          DISCHARGE_WORKFLOW_ARN: !Ref DischargeLetterWorkflow
           OPENAI_SECRET_ID: mediflow/dev/openai-api-key
           OPENAI_MODEL: gpt-6-luna
 
@@ -75,9 +80,18 @@ Resources:
         - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:mediflow/dev/openai-api-key-??????"
 
-
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DischargeJobsTable
+        
+        - Statement:
+            - Sid: StartDischargeWorkflow
+              Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource: !Ref DischargeLetterWorkflow
 
       Events:
+        # Existing patient endpoints
         ListPatients:
           Type: HttpApi
           Properties:
@@ -99,6 +113,7 @@ Resources:
             Path: /patients
             Method: POST
 
+        # AI Clinical Assistant
         AskPatientApi:
           Type: HttpApi
           Properties:
@@ -107,6 +122,47 @@ Resources:
             Method: POST
             PayloadFormatVersion: "2.0"
 
+        # Step 8: Create asynchronous discharge job
+        CreateDischargeLetterApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PatientsHttpApi
+            Path: /patients/{patient_id}/discharge-letters
+            Method: POST
+            PayloadFormatVersion: "2.0"
+
+        # Step 9: Retrieve discharge job status
+        GetDischargeJobApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PatientsHttpApi
+            Path: /discharge-jobs/{job_id}
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        
+        GetDischargeDraftApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PatientsHttpApi
+            Path: /discharge-jobs/{job_id}/draft
+            Method: GET
+            PayloadFormatVersion: "2.0"
+
+        EditDischargeDraftApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PatientsHttpApi
+            Path: /discharge-jobs/{job_id}/draft
+            Method: PUT
+            PayloadFormatVersion: "2.0"
+
+        ReviewDischargeDraftApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PatientsHttpApi
+            Path: /discharge-jobs/{job_id}/review
+            Method: POST
+            PayloadFormatVersion: "2.0"
 
   # ----------------------------------------
   # 4. Cognito User Pool for Doctors
@@ -115,6 +171,7 @@ Resources:
     Type: AWS::Cognito::UserPool
     Properties:
       UserPoolName: mediflow-doctors-dev
+
       AdminCreateUserConfig:
         AllowAdminCreateUserOnly: true
 
@@ -126,18 +183,25 @@ Resources:
     Properties:
       UserPoolId: !Ref DoctorsUserPool
       GenerateSecret: false
+
       ExplicitAuthFlows:
         - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
+
       AllowedOAuthFlowsUserPoolClient: true
+
       AllowedOAuthFlows:
         - code
+
       AllowedOAuthScopes:
         - openid
+
       SupportedIdentityProviders:
         - COGNITO
+
       CallbackURLs:
         - http://localhost:5173/
+
       LogoutURLs:
         - http://localhost:5173/
 
@@ -154,28 +218,33 @@ Resources:
   PatientsHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+
       CorsConfiguration:
         AllowOrigins:
           - http://localhost:5173
+
         AllowMethods:
           - GET
           - POST
           - OPTIONS
+
         AllowHeaders:
           - Authorization
           - Content-Type
+          - Idempotency-Key
+
       Auth:
         DefaultAuthorizer: CognitoAuthorizer
+
         Authorizers:
           CognitoAuthorizer:
             IdentitySource: "$request.header.Authorization"
+
             JwtConfiguration:
               issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${DoctorsUserPool}"
               audience:
                 - !Ref DoctorsUserPoolClient
-    
 
-  
   # ----------------------------------------
   # 7. Clinical Notes DynamoDB Table
   # ----------------------------------------
@@ -187,14 +256,207 @@ Resources:
       AttributeDefinitions:
         - AttributeName: patient_id
           AttributeType: S
+
         - AttributeName: note_id
           AttributeType: S
 
       KeySchema:
         - AttributeName: patient_id
           KeyType: HASH
+
         - AttributeName: note_id
           KeyType: RANGE
+  
+  # ----------------------------------------
+  # 8. Discharge Jobs DynamoDB Table
+  # ----------------------------------------
+  DischargeJobsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+
+      AttributeDefinitions:
+        - AttributeName: job_id
+          AttributeType: S
+
+      KeySchema:
+        - AttributeName: job_id
+          KeyType: HASH
+
+  # ----------------------------------------
+  # Discharge Letter Workflow
+  # ----------------------------------------
+  DischargeLetterWorkflow:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub "${AWS::StackName}-DischargeLetterWorkflow"
+      Type: STANDARD
+
+      DefinitionSubstitutions:
+        ProcessingFunctionArn: !GetAtt DischargeProcessingFunction.Arn
+        DraftFunctionArn: !GetAtt DischargeDraftFunction.Arn
+        FailureFunctionArn: !GetAtt DischargeFailureFunction.Arn
+
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref DischargeProcessingFunction
+
+        - LambdaInvokePolicy:
+            FunctionName: !Ref DischargeDraftFunction
+
+        - LambdaInvokePolicy:
+            FunctionName: !Ref DischargeFailureFunction
+
+      Definition:
+        Comment: "Generate an unsigned discharge draft for doctor review"
+        StartAt: MarkProcessing
+
+        States:
+          MarkProcessing:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+
+            Parameters:
+              FunctionName: "${ProcessingFunctionArn}"
+              Payload.$: "$"
+
+            ResultPath: "$.processing_result"
+            Next: GenerateDraft
+
+          GenerateDraft:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+
+            Parameters:
+              FunctionName: "${DraftFunctionArn}"
+              Payload:
+                job_id.$: "$.job_id"
+
+            ResultPath: "$.draft_result"
+
+            Retry:
+              - ErrorEquals:
+                  - Lambda.ServiceException
+                  - Lambda.AWSLambdaException
+                  - Lambda.SdkClientException
+                  - Lambda.TooManyRequestsException
+                IntervalSeconds: 2
+                MaxAttempts: 2
+                BackoffRate: 2.0
+
+            Catch:
+              - ErrorEquals:
+                  - States.ALL
+                ResultPath: "$.generation_failure"
+                Next: MarkFailed
+
+            Next: WorkflowCompleted
+
+          MarkFailed:
+            Type: Task
+            Resource: arn:aws:states:::lambda:invoke
+
+            Parameters:
+              FunctionName: "${FailureFunctionArn}"
+              Payload:
+                job_id.$: "$.job_id"
+
+            ResultPath: "$.failure_result"
+            Next: WorkflowFailed
+
+          WorkflowCompleted:
+            Type: Succeed
+
+          WorkflowFailed:
+            Type: Fail
+            Error: DischargeDraftGenerationFailed
+            Cause: "Discharge draft generation did not complete"
+
+  # ----------------------------------------
+  # Discharge Processing Lambda
+  # ----------------------------------------
+  DischargeProcessingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: discharge_worker/
+      Handler: handler.lambda_handler
+      Runtime: python3.12
+      MemorySize: 128
+      Timeout: 15
+
+      Environment:
+        Variables:
+          DISCHARGE_JOBS_TABLE: !Ref DischargeJobsTable
+
+      Policies:
+        - Statement:
+            - Sid: UpdateDischargeJobStatus
+              Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt DischargeJobsTable.Arn
+
+  # ----------------------------------------
+  # Discharge Draft Generation Lambda
+  # ----------------------------------------
+  DischargeDraftFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/
+      Handler: app.workers.generate_discharge_letter.lambda_handler
+      Runtime: python3.12
+      MemorySize: 512
+      Timeout: 60
+
+      Environment:
+        Variables:
+          PATIENTS_TABLE: !Ref PatientsTable
+          CLINICAL_NOTES_TABLE: !Ref ClinicalNotesTable
+          DISCHARGE_JOBS_TABLE: !Ref DischargeJobsTable
+          OPENAI_SECRET_ID: mediflow/dev/openai-api-key
+          OPENAI_MODEL: gpt-6-luna
+
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PatientsTable
+
+        - DynamoDBReadPolicy:
+            TableName: !Ref ClinicalNotesTable
+
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt DischargeJobsTable.Arn
+
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:mediflow/dev/openai-api-key-??????"
+
+  # ----------------------------------------
+  # Discharge Failure Handler Lambda
+  # ----------------------------------------
+  DischargeFailureFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: discharge_worker/
+      Handler: handler.mark_failed_handler
+      Runtime: python3.12
+      MemorySize: 128
+      Timeout: 15
+
+      Environment:
+        Variables:
+          DISCHARGE_JOBS_TABLE: !Ref DischargeJobsTable
+
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt DischargeJobsTable.Arn
 
 
 # ----------------------------------------
@@ -221,3 +483,11 @@ Outputs:
   ClinicalNotesTableName:
     Description: DynamoDB clinical notes table name
     Value: !Ref ClinicalNotesTable
+
+  DischargeJobsTableName:
+    Description: DynamoDB table for discharge-letter jobs
+    Value: !Ref DischargeJobsTable
+
+  DischargeLetterWorkflowArn:
+    Description: ARN of the discharge-letter Step Functions workflow
+    Value: !Ref DischargeLetterWorkflow

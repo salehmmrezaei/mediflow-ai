@@ -92,8 +92,8 @@ if (!configurationError) {
           oauth: {
             domain: environment.VITE_COGNITO_DOMAIN,
             scopes: ['openid'],
-            redirectSignIn: ['http://localhost:5173/'],
-            redirectSignOut: ['http://localhost:5173/'],
+            redirectSignIn: [`${window.location.origin}/`],
+            redirectSignOut: [`${window.location.origin}/`],
             responseType: 'code',
           },
         },

@@ -194,14 +194,14 @@ See [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
 ## Demo
 
-A controlled online demonstration is planned.
+A controlled online demonstration is available at
+[mediflow.salehmmrezaei.com](https://mediflow.salehmmrezaei.com).
 
 The public demonstration will use fictional clinical records and
 restricted access. It will not expose development doctor credentials.
 
 ## Future Improvements
 
-- Controlled hosted demo with spending limits
 - Patient-specific discharge-job history
 - Stronger clinical evidence verification
 - More comprehensive audit trails

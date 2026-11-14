@@ -2,12 +2,24 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getPatients, type Patient } from '../api/patients'
 import { askPatientQuestion, type ClinicalAnswer } from '../api/clinicalAssistant'
+import {
+  createDischargeJob, getDischargeDraft, getDischargeJob, saveDischargeDraft, reviewDischargeDraft,
+  SECTION_NAMES, type DischargeDraft, type DischargeDraftResponse, type DischargeJob,
+} from '../api/dischargeLetters'
 import { PatientDashboard } from './PatientDashboard'
 
 vi.mock('../api/patients', () => ({ getPatients: vi.fn() }))
 vi.mock('../api/clinicalAssistant', async (importOriginal) => ({
   ...await importOriginal<typeof import('../api/clinicalAssistant')>(),
   askPatientQuestion: vi.fn(),
+}))
+vi.mock('../api/dischargeLetters', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../api/dischargeLetters')>(),
+  createDischargeJob: vi.fn(),
+  getDischargeJob: vi.fn(),
+  getDischargeDraft: vi.fn(),
+  saveDischargeDraft: vi.fn(),
+  reviewDischargeDraft: vi.fn(),
 }))
 
 const patients: Patient[] = [
@@ -16,6 +28,20 @@ const patients: Patient[] = [
   { patient_id: 'B', first_name: 'Bob', last_name: 'Example', age: 42,
     diagnosis: { diagnosis: 'Synthetic diagnosis' }, admission_date: '2026-11-14', status: 'scheduled' },
 ]
+
+const dischargeJob: DischargeJob = {
+  job_id: 'synthetic-job-a', patient_id: 'A', status: 'PENDING_REVIEW',
+  created_at: '2026-11-14T10:00:00Z', updated_at: '2026-11-14T10:01:00Z',
+}
+const dischargeDraft: DischargeDraftResponse = {
+  job_id: dischargeJob.job_id, patient_id: 'A', status: 'PENDING_REVIEW',
+  updated_at: dischargeJob.updated_at, document_state: 'UNSIGNED_DRAFT',
+  draft: Object.fromEntries(SECTION_NAMES.map((name) => [name, {
+    text: name === 'admission_reason' ? 'Synthetic Alice discharge evidence.' : `Synthetic ${name} evidence.`,
+    documented: true, supporting_note_ids: ['N001'],
+  }])) as DischargeDraft,
+  missing_sections: [], supporting_note_ids: ['N001'], review_note: '',
+}
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -26,6 +52,11 @@ function deferred<T>() {
 beforeEach(() => {
   vi.mocked(getPatients).mockReset().mockResolvedValue(patients)
   vi.mocked(askPatientQuestion).mockReset()
+  vi.mocked(createDischargeJob).mockReset().mockResolvedValue(dischargeJob)
+  vi.mocked(getDischargeJob).mockReset().mockResolvedValue(dischargeJob)
+  vi.mocked(getDischargeDraft).mockReset().mockResolvedValue(dischargeDraft)
+  vi.mocked(saveDischargeDraft).mockReset()
+  vi.mocked(reviewDischargeDraft).mockReset()
 })
 
 describe('Doctor workspace integration', () => {
@@ -96,5 +127,47 @@ describe('Doctor workspace integration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
     await screen.findByRole('table')
     expect(getPatients).toHaveBeenCalledTimes(2)
+  })
+
+  it('supports discharge generation alongside the existing assistant and clears both on patient change', async () => {
+    vi.mocked(askPatientQuestion).mockResolvedValue({
+      answer: 'Synthetic Alice assistant answer.', supporting_note_ids: ['N001'], insufficient_evidence: false,
+    })
+    render(<PatientDashboard username="doctor-test" onSignOut={vi.fn()} />)
+    await screen.findByRole('button', { name: 'Select Alice Example (A)' })
+    expect((screen.getByRole('button', { name: 'Generate Discharge Letter' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Select Alice Example (A)' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Clinical question' }), { target: { value: 'What happened?' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Ask AI' }))
+    await screen.findByText('Synthetic Alice assistant answer.')
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Discharge Letter' }))
+    await screen.findByText('Synthetic Alice discharge evidence.')
+    expect(createDischargeJob).toHaveBeenCalledWith('A', expect.any(String), expect.any(AbortSignal))
+    expect(screen.getByText('Synthetic Alice assistant answer.')).toBeTruthy()
+    expect(within(document.getElementById('discharge-letter')!).getByText(/Alice Example/)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select Bob Example (B)' }))
+    expect(screen.queryByText('Synthetic Alice discharge evidence.')).toBeNull()
+    expect(screen.queryByText('Synthetic Alice assistant answer.')).toBeNull()
+    expect(within(document.getElementById('discharge-letter')!).getByText(/Bob Example/)).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Generate Discharge Letter' }) as HTMLButtonElement).disabled).toBe(false)
+    expect(getDischargeDraft).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels discharge retrieval when patient refresh removes the selection and ignores a late draft', async () => {
+    const pendingDraft = deferred<DischargeDraftResponse>()
+    vi.mocked(getDischargeDraft).mockReturnValue(pendingDraft.promise)
+    render(<PatientDashboard username="doctor-test" onSignOut={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Select Alice Example (A)' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Generate Discharge Letter' }))
+    await waitFor(() => expect(getDischargeDraft).toHaveBeenCalledOnce())
+    const signal = vi.mocked(getDischargeDraft).mock.calls[0][1]!
+    vi.mocked(getPatients).mockResolvedValue([patients[1]])
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Select Alice Example (A)' })).toBeNull())
+    expect(signal.aborted).toBe(true)
+    await act(async () => { pendingDraft.resolve(dischargeDraft) })
+    expect(screen.queryByText('Synthetic Alice discharge evidence.')).toBeNull()
+    expect((screen.getByRole('button', { name: 'Generate Discharge Letter' }) as HTMLButtonElement).disabled).toBe(true)
   })
 })

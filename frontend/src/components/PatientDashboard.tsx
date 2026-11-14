@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getPatients, type Patient } from '../api/patients'
 import { ClinicalAssistant } from './ClinicalAssistant'
+import { DischargeLetter } from './DischargeLetter'
 
 type PatientDashboardProps = {
   username: string
@@ -88,7 +89,7 @@ export function PatientDashboard({ username, onSignOut }: PatientDashboardProps)
                 </span>
               )}
             </div>
-            <p className="muted">Select a patient to ask about their clinical notes.</p>
+            <p className="muted">Select a patient to ask about their notes or prepare a discharge draft.</p>
           </div>
           <button className="secondary-button refresh-button" type="button"
             onClick={refreshPatients} disabled={state.status === 'loading'}>Refresh</button>
@@ -136,7 +137,7 @@ export function PatientDashboard({ username, onSignOut }: PatientDashboardProps)
                       <button type="button" className="patient-name patient-select"
                         aria-label={`Select ${patient.first_name} ${patient.last_name} (${patient.patient_id})`}
                         aria-pressed={selectedPatientId === patient.patient_id}
-                        aria-controls="clinical-assistant"
+                        aria-controls="clinical-assistant discharge-letter"
                         onClick={() => setSelectedPatientId(patient.patient_id)}>
                         {patient.first_name} {patient.last_name}
                       </button>
@@ -159,6 +160,7 @@ export function PatientDashboard({ username, onSignOut }: PatientDashboardProps)
         )}
       </div>
       <ClinicalAssistant patient={selectedPatient} />
+      <DischargeLetter patient={selectedPatient} />
     </section>
   )
 }

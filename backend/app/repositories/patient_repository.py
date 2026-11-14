@@ -2,6 +2,7 @@
 import os
 
 import boto3
+from boto3.dynamodb.conditions import Attr
 from botocore.exceptions import ClientError
 
 from app.models.patient import Patient
@@ -16,10 +17,12 @@ def get_table():
     return boto3.resource("dynamodb").Table(table_name)
 
 
-def list_patients() -> list[dict]:
+def list_patients(doctor_sub: str) -> list[dict]:
     table = get_table()
     patients = []
-    scan_kwargs = {}
+    scan_kwargs = {
+        "FilterExpression": Attr("doctor_sub").eq(doctor_sub)
+    }
 
     while True:
         response = table.scan(**scan_kwargs)
@@ -33,19 +36,29 @@ def list_patients() -> list[dict]:
     return patients
 
 
-def get_patient(patient_id: str) -> dict | None:
+def get_patient(patient_id: str, doctor_sub: str) -> dict | None:
     table = get_table()
 
     response = table.get_item(
         Key={"patient_id": patient_id}
     )
 
-    return response.get("Item")
+    patient = response.get("Item")
+
+    if patient is None:
+        return None
+
+    if patient.get("doctor_sub") != doctor_sub:
+        return None
+
+    return patient
 
 
-def create_patient(patient: Patient) -> dict:
+def create_patient(patient: Patient, doctor_sub: str) -> dict:
     table = get_table()
+
     item = patient.model_dump(mode="json")
+    item["doctor_sub"] = doctor_sub
 
     try:
         table.put_item(

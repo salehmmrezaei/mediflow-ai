@@ -2,12 +2,12 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 
-Description: MediFlow AI serverless API with DynamoDB
+Description: MediFlow AI serverless backend with DynamoDB and Cognito
 
 Resources:
 
   # ----------------------------------------
-  # 1. Health Check Lambda
+  # 1. Public Health Check Lambda
   # ----------------------------------------
   HealthFunction:
     Type: AWS::Serverless::Function
@@ -57,3 +57,80 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref PatientsTable
+
+      Events:
+        ListPatients:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PatientsHttpApi
+            Path: /patients
+            Method: GET
+
+        GetPatient:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PatientsHttpApi
+            Path: /patients/{patient_id}
+            Method: GET
+
+        CreatePatient:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PatientsHttpApi
+            Path: /patients
+            Method: POST
+
+  # ----------------------------------------
+  # 4. Cognito User Pool for Doctors
+  # ----------------------------------------
+  DoctorsUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: mediflow-doctors-dev
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+
+  # ----------------------------------------
+  # 5. Cognito Application Client
+  # ----------------------------------------
+  DoctorsUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref DoctorsUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+
+  # ----------------------------------------
+  # 6. Secure Patient HTTP API
+  # ----------------------------------------
+  PatientsHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            IdentitySource: "$request.header.Authorization"
+            JwtConfiguration:
+              issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${DoctorsUserPool}"
+              audience:
+                - !Ref DoctorsUserPoolClient
+
+# ----------------------------------------
+# CloudFormation Outputs
+# ----------------------------------------
+Outputs:
+
+  PatientApiUrl:
+    Description: Secure Patient API endpoint
+    Value: !Sub "https://${PatientsHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+
+  UserPoolId:
+    Description: Cognito doctor User Pool ID
+    Value: !Ref DoctorsUserPool
+
+  UserPoolClientId:
+    Description: Cognito application Client ID
+    Value: !Ref DoctorsUserPoolClient

@@ -36,6 +36,10 @@ function syntheticServer() {
     requests.push({ method, path, body, key })
 
     if (method === 'GET' && path === '/patients') return json([alice, bob])
+    const history = /^\/patients\/([^/]+)\/discharge-letters$/.exec(path)
+    if (method === 'GET' && history) {
+      return json([...jobs.values()].map(({ job }) => job).filter((job) => job.patient_id === history[1]))
+    }
     if (method === 'POST' && path === `/patients/${alice.patient_id}/discharge-letters`) {
       if (!key) return json({ detail: 'Idempotency-Key is required' }, 422)
       const existing = keys.get(key)
@@ -145,7 +149,7 @@ describe('discharge checklist with the real HTTP client and synthetic server sta
 
     fireEvent.click(screen.getByRole('button', { name: 'Generate New Discharge Letter' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Reject Draft' }))
-    const creationRequests = server.requests.filter((request) => request.path.endsWith('/discharge-letters'))
+    const creationRequests = server.requests.filter((request) => request.method === 'POST' && request.path.endsWith('/discharge-letters'))
     expect(creationRequests).toHaveLength(2)
     expect(creationRequests[1].key).not.toBe(creationRequests[0].key)
     expect(server.jobs.size).toBe(2)
@@ -167,6 +171,9 @@ describe('discharge checklist with the real HTTP client and synthetic server sta
     expect(server.jobs.get('synthetic-job-approve')!.document.status).toBe('APPROVED')
     expect(server.jobs.get('synthetic-job-reject')!.document.status).toBe('REJECTED')
     expect(screen.queryByRole('button', { name: 'Edit Draft' })).toBeNull()
+    const historyTable = screen.getByRole('table', { name: 'Discharge letter jobs' })
+    expect(within(historyTable).getByText('synthetic-job-approve').closest('tr')?.textContent).toContain('Approved')
+    await waitFor(() => expect(within(historyTable).getByText('synthetic-job-reject').closest('tr')?.textContent).toContain('Rejected'))
 
     const aliceDraftText = 'Synthetic admission evidence for synthetic-job-reject.'
     expect(screen.getByText(aliceDraftText)).toBeTruthy()
@@ -177,5 +184,14 @@ describe('discharge checklist with the real HTTP client and synthetic server sta
     expect(screen.queryByRole('button', { name: 'Edit Draft' })).toBeNull()
     expect(within(document.getElementById('discharge-letter')!).getByText('Bob Example')).toBeTruthy()
     await waitFor(() => expect(server.requests.filter((request) => request.path.endsWith('/review'))).toHaveLength(2))
+    expect(screen.queryByText('synthetic-job-approve')).toBeNull()
+    expect(screen.queryByText('synthetic-job-reject')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: `Select Alice Example (${alice.patient_id})` }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Open job synthetic-job-approve' }))
+    await screen.findByText(editedText)
+    expect(screen.queryByRole('button', { name: 'Edit Draft' })).toBeNull()
+    expect(server.requests.filter((request) => request.method === 'POST'
+      && request.path.endsWith('/discharge-letters'))).toHaveLength(2)
   })
 })

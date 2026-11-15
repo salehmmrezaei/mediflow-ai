@@ -51,6 +51,7 @@ describe('authenticated workspace after adding the public demo', () => {
       const body: unknown = init?.body ? JSON.parse(String(init.body)) : undefined
       requests.push({ path, method, headers: new Headers(init?.headers), body })
       if (path === '/patients' && method === 'GET') return json([patient])
+      if (path === `/patients/${patient.patient_id}/discharge-letters` && method === 'GET') return json([])
       if (path === `/patients/${patient.patient_id}/ask` && method === 'POST') {
         return json({ answer: 'A deterministic authenticated API answer.', supporting_note_ids: ['N001'], insufficient_evidence: false })
       }
@@ -92,6 +93,7 @@ describe('authenticated workspace after adding the public demo', () => {
 
     expect(requests.map(({ method, path }) => `${method} ${path}`)).toEqual([
       'GET /patients',
+      `GET /patients/${patient.patient_id}/discharge-letters`,
       `POST /patients/${patient.patient_id}/ask`,
       `POST /patients/${patient.patient_id}/discharge-letters`,
       `GET /discharge-jobs/${job.job_id}`,
@@ -103,9 +105,9 @@ describe('authenticated workspace after adding the public demo', () => {
     for (const request of requests) {
       expect(request.headers.get('Authorization')).toBe('Bearer synthetic-authenticated-access-token')
     }
-    expect(requests[1].body).toEqual({ question: 'Why was Alice admitted?' })
-    expect(requests[2].headers.get('Idempotency-Key')).toMatch(/^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i)
-    expect(requests[5].body).toMatchObject({ expected_updated_at: job.updated_at })
-    expect(requests[6].body).toMatchObject({ action: 'APPROVE', expected_updated_at: '2026-11-14T10:02:00Z', acknowledge_missing_sections: true })
+    expect(requests[2].body).toEqual({ question: 'Why was Alice admitted?' })
+    expect(requests[3].headers.get('Idempotency-Key')).toMatch(/^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i)
+    expect(requests[6].body).toMatchObject({ expected_updated_at: job.updated_at })
+    expect(requests[7].body).toMatchObject({ action: 'APPROVE', expected_updated_at: '2026-11-14T10:02:00Z', acknowledge_missing_sections: true })
   }, 8000)
 })

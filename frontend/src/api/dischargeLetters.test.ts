@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchAuthSession } from 'aws-amplify/auth'
 import {
   createDischargeJob, createIdempotencyKey, DISCHARGE_REQUEST_TIMEOUT_MS,
-  DischargeLetterError, getDischargeDraft, getDischargeJob, MISSING_TEXT,
+  DischargeLetterError, getDischargeDraft, getDischargeJob, listDischargeJobs, MISSING_TEXT,
   reviewDischargeDraft, saveDischargeDraft, SECTION_NAMES, validateDischargeDraft,
   type DischargeDraft, type DischargeDraftResponse,
 } from './dischargeLetters'
@@ -49,6 +49,35 @@ describe('discharge API', () => {
       method: 'POST', headers: { Authorization: 'Bearer synthetic-token', 'Idempotency-Key': key },
       signal: expect.any(AbortSignal), cache: 'no-store',
     })
+  })
+
+  it('lists saved jobs for the encoded patient using the authenticated doctor’s token', async () => {
+    respond([job])
+    await expect(listDischargeJobs(job.patient_id)).resolves.toEqual([job])
+    expect(fetchMock).toHaveBeenCalledWith('https://example.test/api/patients/patient%2Fa%20%3F%23/discharge-letters', {
+      method: 'GET', headers: { Authorization: 'Bearer synthetic-token' },
+      signal: expect.any(AbortSignal), cache: 'no-store',
+    })
+  })
+
+  it('accepts an empty saved job list', async () => {
+    respond([])
+    await expect(listDischargeJobs(job.patient_id)).resolves.toEqual([])
+  })
+
+  it.each([null, {}, { jobs: [job] }, [job, { ...job, patient_id: 'another-patient' }], [{ ...job, status: 'SIGNED' }]])(
+    'rejects malformed history or a job for another patient %#', async (body) => {
+      respond(body)
+      await expect(listDischargeJobs(job.patient_id)).rejects.toMatchObject({ status: 502 })
+    },
+  )
+
+  it('does not retrieve history without patient selection or an authenticated session', async () => {
+    await expect(listDischargeJobs(' ')).rejects.toThrow('Select a patient')
+    expect(fetchAuthSession).not.toHaveBeenCalled()
+    vi.mocked(fetchAuthSession).mockResolvedValueOnce({})
+    await expect(listDischargeJobs(job.patient_id)).rejects.toMatchObject({ status: 401 })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('retains the caller supplied idempotency key when an uncertain creation is retried', async () => {

@@ -175,6 +175,33 @@ def ask_patient(
 
 
 
+@app.get(
+    "/patients/{patient_id}/discharge-letters",
+    response_model=list[DischargeJobResponse],
+)
+def list_discharge_letters(
+    patient_id: str,
+    doctor_sub: str = Depends(get_current_doctor),
+):
+    try:
+        return discharge_job_repository.list_discharge_jobs(
+            patient_id=patient_id,
+            doctor_sub=doctor_sub,
+        )
+
+    except discharge_job_repository.PatientAccessDeniedError:
+        raise HTTPException(
+            status_code=404,
+            detail="Patient not found",
+        )
+
+    except (ClientError, BotoCoreError):
+        raise HTTPException(
+            status_code=503,
+            detail="Discharge job storage unavailable",
+        )
+
+
 @app.post(
     "/patients/{patient_id}/discharge-letters",
     status_code=202,

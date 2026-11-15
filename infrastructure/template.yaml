@@ -121,6 +121,14 @@ Resources:
             Method: POST
             PayloadFormatVersion: "2.0"
 
+        ListDischargeLettersApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PatientsHttpApi
+            Path: /patients/{patient_id}/discharge-letters
+            Method: GET
+            PayloadFormatVersion: "2.0"
+
         # Step 8: Create asynchronous discharge job
         CreateDischargeLetterApi:
           Type: HttpApi

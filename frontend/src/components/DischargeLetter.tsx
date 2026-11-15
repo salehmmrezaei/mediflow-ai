@@ -67,6 +67,7 @@ function PatientDischargeLetter({ patient }: Props) {
   const editError = editor ? validateDischargeDraft(editor) : null
   const noteLength = Array.from(reviewNote).length
   const locked = Boolean(busy || loadingDraft)
+  const draftLocked = locked || hasSubmissionKey
 
   useEffect(() => () => {
     inFlight.current?.abort()
@@ -116,7 +117,7 @@ function PatientDischargeLetter({ patient }: Props) {
   const jobStatus = job?.status
   const patientId = patient?.patient_id
   useEffect(() => {
-    if (!jobId || !jobStatus || !patientId || jobStatus === 'FAILED') return
+    if (hasSubmissionKey || !jobId || !jobStatus || !patientId || jobStatus === 'FAILED') return
     if (!isProcessing(jobStatus) && document?.job_id === jobId
       && document.status === jobStatus && document.updated_at === job?.updated_at) return
     const controller = new AbortController()
@@ -159,11 +160,14 @@ function PatientDischargeLetter({ patient }: Props) {
       controller.abort()
       if (monitor.current === controller) monitor.current = null
     }
-  }, [jobId, jobStatus, patientId, monitorVersion, document?.job_id, document?.status, document?.updated_at, job?.updated_at])
+  }, [jobId, jobStatus, patientId, monitorVersion, hasSubmissionKey, document?.job_id, document?.status, document?.updated_at, job?.updated_at])
 
   function generate(retry = false) {
-    if (!patient || inFlight.current || active || pending) return
+    if (!patient || locked || editor || inFlight.current) return
     if (!retry && submissionKey.current) return
+    // A new job replaces the selected job only after creation succeeds.
+    // Stop its old monitor so a late status cannot replace the new selection.
+    monitor.current?.abort()
     void perform('create', async (signal) => {
       submissionKey.current ??= createIdempotencyKey()
       setHasSubmissionKey(true)
@@ -178,6 +182,10 @@ function PatientDischargeLetter({ patient }: Props) {
           if (!signal.aborted) setHasSubmissionKey(false)
         }
         throw cause
+      } finally {
+        // Resume the old job after a definitive rejection. An uncertain creation
+        // keeps tracking paused so monitoring errors cannot hide its retry.
+        if (!signal.aborted && !submissionKey.current) setMonitorVersion((version) => version + 1)
       }
       if (signal.aborted) return
       ensureIdentity(value)
@@ -264,7 +272,7 @@ function PatientDischargeLetter({ patient }: Props) {
   }
 
   const reloadControl = job && (
-    <button type="button" className="secondary-button" disabled={locked}
+    <button type="button" className="secondary-button" disabled={draftLocked}
       onClick={() => editor ? setConfirmation('reload') : reloadLatest()}>Reload latest draft</button>
   )
 
@@ -301,16 +309,16 @@ function PatientDischargeLetter({ patient }: Props) {
         {patient && <DischargeJobHistory patientId={patient.patient_id} currentJob={job}
           disabled={locked} editing={Boolean(editor)} pendingSubmission={hasSubmissionKey} onOpen={openJob} />}
         <p className="discharge-disclaimer">AI-generated draft — Requires doctor review — Not signed</p>
-        {(!job || ['FAILED', 'APPROVED', 'REJECTED'].includes(job.status)) && (
-          <button type="button" className="primary-button" onClick={() => generate()}
-            disabled={!patient || locked || hasSubmissionKey}>
-            {busy === 'create' ? 'Generating…' : job ? 'Generate New Discharge Letter' : 'Generate Discharge Letter'}
-          </button>
-        )}
+        <button type="button" className="primary-button" onClick={() => generate()}
+          disabled={!patient || locked || hasSubmissionKey || Boolean(editor)}>
+          {busy === 'create' ? 'Generating…' : job ? 'Generate New Discharge Letter' : 'Generate Discharge Letter'}
+        </button>
+        {editor && <p className="discharge-generation-help muted">Save or cancel your edits before generating a new discharge letter.</p>}
         {job && <div className="discharge-progress" role="status">
           <span className={`discharge-status discharge-status-${job.status.toLowerCase()}`}>{DISCHARGE_STATUS_LABELS[job.status]}</span>
           {active && <><span className="loading-indicator" aria-hidden="true" />
-            <span>{error?.operation === 'status' ? 'Monitoring paused. Retry to check progress.' : 'Preparing the draft. Checking progress every three seconds…'}</span></>}
+            <span>{hasSubmissionKey ? 'Tracking paused while the new generation request is resolved. This job continues in the background.'
+              : error?.operation === 'status' ? 'Monitoring paused. Retry to check progress.' : 'Preparing the draft. Checking progress every three seconds…'}</span></>}
           {loadingDraft && <span>Loading discharge draft…</span>}
         </div>}
         {job?.status === 'FAILED' && <p className="error-message" role="alert">Discharge generation failed. No draft is available for review. You can start a new generation.</p>}
@@ -354,9 +362,9 @@ function PatientDischargeLetter({ patient }: Props) {
               <button className="primary-button" type="button" disabled={locked || Boolean(editError) || error?.status === 409} onClick={save}>{busy === 'save' ? 'Saving…' : 'Save changes'}</button>
               <button className="secondary-button" type="button" disabled={locked} onClick={() => { setEditor(null); setError(null) }}>Cancel edits</button>
             </> : <>
-              <button className="secondary-button" type="button" disabled={locked} onClick={() => { setEditor(structuredClone(document.draft)); setSuccess('') }}>Edit Draft</button>
-              <button className="primary-button" type="button" disabled={locked || error?.status === 409} onClick={() => openReview('APPROVE')}>Approve Draft</button>
-              <button className="discharge-reject secondary-button" type="button" disabled={locked || error?.status === 409} onClick={() => openReview('REJECT')}>Reject Draft</button>
+              <button className="secondary-button" type="button" disabled={draftLocked} onClick={() => { setEditor(structuredClone(document.draft)); setSuccess('') }}>Edit Draft</button>
+              <button className="primary-button" type="button" disabled={draftLocked || error?.status === 409} onClick={() => openReview('APPROVE')}>Approve Draft</button>
+              <button className="discharge-reject secondary-button" type="button" disabled={draftLocked || error?.status === 409} onClick={() => openReview('REJECT')}>Reject Draft</button>
             </>}
           </div>}
         </>}

@@ -39,6 +39,7 @@ export function DischargeJobHistory({ patientId, currentJob, disabled, editing, 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [version, setVersion] = useState(0)
+  const [expanded, setExpanded] = useState(true)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -62,8 +63,21 @@ export function DischargeJobHistory({ patientId, currentJob, disabled, editing, 
   return (
     <div className="discharge-history" aria-labelledby={`${id}-title`}>
       <div className="discharge-history-heading">
-        <div><h3 id={`${id}-title`}>Discharge letter jobs</h3>
-          <p className="muted">Your jobs for this patient, newest first. Open a job to track progress or review its letter.</p></div>
+        <div className="discharge-history-heading-content">
+          <h3 id={`${id}-title`}>
+            <button type="button" className="discharge-history-toggle" aria-label="Discharge letter jobs"
+              aria-expanded={expanded} aria-controls={`${id}-table`} onClick={() => setExpanded((value) => !value)}>
+              <span className="discharge-history-toggle-title">
+                <svg className="discharge-history-chevron" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Discharge letter jobs
+              </span>
+              <span className="discharge-history-toggle-hint" aria-hidden="true">{expanded ? 'Hide jobs' : 'Show jobs'}</span>
+            </button>
+          </h3>
+          <p className="muted">Your jobs for this patient, newest first. Open a job to track progress or review its letter.</p>
+        </div>
         <button type="button" className="secondary-button" disabled={loading}
           onClick={() => setVersion((value) => value + 1)}>Refresh jobs</button>
       </div>
@@ -71,7 +85,8 @@ export function DischargeJobHistory({ patientId, currentJob, disabled, editing, 
       {error && <p className="discharge-error" role="alert">{error}</p>}
       {editing && <p className="discharge-history-message muted">Save or cancel your edits before opening another job.</p>}
       {pendingSubmission && <p className="discharge-history-message muted">Resolve the current generation request before opening another job. If it failed, use Retry generation below.</p>}
-      <div className="table-scroll" tabIndex={0} role="region" aria-label="Discharge letter jobs table" aria-busy={loading}>
+      <div id={`${id}-table`} className="table-scroll" hidden={!expanded} tabIndex={0}
+        role="region" aria-label="Discharge letter jobs table" aria-busy={loading}>
         <table className="patient-table discharge-jobs-table">
           <caption className="sr-only">Discharge letter jobs</caption>
           <thead><tr><th scope="col">Job ID</th><th scope="col">Status</th><th scope="col">Created</th>

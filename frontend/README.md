@@ -28,7 +28,9 @@ The existing `vercel.json` rewrite sends all frontend paths to `/index.html`, in
 
 ## Existing AWS configuration
 
-Skip infrastructure deployment when the backend and browser CORS configuration are already configured. Draft editing requires API Gateway CORS to permit `PUT` as well as `GET`, `POST`, and `OPTIONS`, and the `Authorization`, `Content-Type`, and `Idempotency-Key` headers for `http://localhost:5173`. The following commands describe the earlier infrastructure setup and should be used only when deliberately setting up or updating that infrastructure.
+The Doctor Workspace calls the remote API configured by `VITE_API_URL`. The discharge job history table requires the updated Patient API Lambda and the new `GET /patients/{patient_id}/discharge-letters` API Gateway route. Rebuild and deploy the SAM stack with the commands below before testing history against an older backend; starting Vite or rebuilding the frontend does not publish backend changes. Skip deployment when those changes are already deployed.
+
+Draft editing requires API Gateway CORS to permit `PUT` as well as `GET`, `POST`, and `OPTIONS`, and the `Authorization`, `Content-Type`, and `Idempotency-Key` headers for `http://localhost:5173`.
 
 A read-only preflight check on 14 November 2026 identified that the deployed API omitted `PUT`. The API's CORS configuration was then updated to allow `GET, POST, OPTIONS, PUT`, preserving its existing origin and headers; `infrastructure/template.yaml` contains the matching fix. No live discharge job or review request was made during implementation.
 
@@ -115,6 +117,8 @@ Questions and answers stay in React memory and are cleared on patient changes or
 
 Select a patient and choose **Generate Discharge Letter**. The panel creates an asynchronous job, displays its queued or processing status, and checks progress approximately every three seconds. It automatically retrieves the draft when review is pending. Generation uses a UUIDv4 `Idempotency-Key`; retrying an uncertain submission reuses that key so it can recover the original job. An intentionally new generation uses a new key. Duplicate submissions are blocked while a request is running.
 
+**Generate New Discharge Letter** stays visible when a job is open, including a draft awaiting review. It creates a separate job and keeps previous jobs in history. Save or cancel unsaved edits first.
+
 The letter displays all seven sections, documented and missing information, and supporting note IDs. It remains clearly marked **AI-generated draft — Requires doctor review — Not signed**. Evidence references identify supplied source notes; they do not establish that the clinical text is factually correct.
 
 Choose **Edit Draft** to edit documented-section text and **Save changes** to save it. Saving progress, failures, and success feedback appear beside the edit controls. Evidence references and documented flags are preserved. Missing sections retain the backend's required `Not documented in the supplied notes.` placeholder and cannot be filled with unsupported information through this text-only editor. Saves include the latest server `updated_at` value. A version conflict offers a reload of the latest draft; temporary failures retain unsaved edits.
@@ -125,6 +129,7 @@ All requests use the current doctor's Cognito access token and the existing API 
 
 | Request | Purpose |
 | --- | --- |
+| `GET /patients/{patient_id}/discharge-letters` | List the signed-in doctor's jobs for the selected patient, newest first |
 | `POST /patients/{patient_id}/discharge-letters` | Create or recover a generation job with its idempotency key |
 | `GET /discharge-jobs/{job_id}` | Monitor job status |
 | `GET /discharge-jobs/{job_id}/draft` | Retrieve or reload the draft |
@@ -133,7 +138,7 @@ All requests use the current doctor's Cognito access token and the existing API 
 
 Patient changes clear the previous draft, editor, review form, errors, and job tracking immediately. Pending requests are cancelled and late responses are ignored. Sign-out unmounts the workspace and clears patient-specific state. Drafts and job tracking remain in React memory; the frontend does not store drafts or access tokens in localStorage. Amplify retains its existing authentication configuration.
 
-There is no patient discharge-job history endpoint. Switching patients, signing out, or reloading the page loses the active job reference; a submitted backend job may continue. This step does not list historical jobs or rediscover them by scanning storage.
+Selecting a patient displays their **Discharge letter jobs** table under Discharge Planning, scoped to the signed-in doctor. It shows job IDs, statuses, creation dates, and last updates. Click the table heading to collapse its rows, and click again to expand them. Collapsing keeps the open letter and job history intact. Choose **Open job** to resume tracking or review a saved letter, or **Refresh jobs** to reload history. Resolve unsaved edits or an uncertain generation retry before opening another job. Backend jobs continue when patients change or the page reloads; select the patient again to retrieve their history.
 
 ## Frontend tests
 
@@ -158,11 +163,11 @@ The public demo tests cover direct public startup, patient selection, determinis
 5. Select a patient, ask a question supported by their synthetic notes, and confirm `POST /patients/{patient_id}/ask` returns HTTP 200 with an answer and supporting note IDs.
 6. Ask a question not established by the available notes and check the insufficient-evidence message when the backend returns that result.
 7. Start a request, switch patients before it completes, and confirm no previous patient's question or answer appears in the new context.
-8. Select a synthetic patient and choose **Generate Discharge Letter**. Confirm the creation request sends a UUIDv4 `Idempotency-Key`, status advances from queued/processing to review pending, and all seven sections appear with missing-information warnings and source note IDs.
+8. Select a synthetic patient and confirm their discharge job history loads. Open an existing job or choose **Generate Discharge Letter**. For a new generation, confirm the creation request sends a UUIDv4 `Idempotency-Key`, status advances from queued/processing to review pending, and all seven sections appear with missing-information warnings and source note IDs.
 9. Edit a documented section, save it, and confirm `PUT /discharge-jobs/{job_id}/draft` succeeds with the latest `expected_updated_at`. Check that the saved text remains visible. If browser preflight fails, check the CORS `PUT` prerequisite above.
 10. On a disposable synthetic draft, open approval, confirm the missing-section count, and verify acknowledgement is required when applicable. Only deliberately confirm an actual synthetic review decision. Verify approved output is read-only and remains unsigned. Use a separate synthetic generation to verify rejection requires and displays a reason.
 11. During generation or draft retrieval, switch patients and confirm neither the previous discharge letter nor the previous assistant answer appears. Repeat during saving/review on synthetic data if needed; cancelling a browser request does not undo a request already accepted by the server.
-12. Refresh the page and confirm the session restores while the previous assistant question, answer, and active discharge job are cleared.
+12. Refresh the page and confirm the session restores while the previous assistant question, answer, and active discharge job are cleared. Select the patient again and confirm saved jobs can be reopened from history.
 13. Choose **Sign out**, including during a pending request, and confirm all patient information disappears. Sign in as a different doctor and confirm only their assigned synthetic patients appear.
 
 These are manual live verification instructions for an existing doctor account. The implementation and automated tests do not perform live generation, approval, or rejection. A browser session against the deployed backend is still required to verify Cognito, CORS, and end-to-end asynchronous processing.
@@ -186,10 +191,11 @@ The combined workflow is verified in [`DischargeLetter.integration.test.tsx`](sr
 - **HTTP 401:** sign out and sign in again. Verify that the frontend uses the deployed User Pool and client ID; the API expects an access token.
 - **Empty patient table:** an HTTP 200 with `[]` means no records are assigned to this doctor. Check the synthetic records' `doctor_sub` against the doctor's Cognito `sub`; do not remove authorization filtering.
 - **Request fails:** the dashboard shows an error and offers retry. Check the browser's network panel, AWS API/Lambda logs, and your connection.
+- **Discharge history cannot load:** confirm the updated Lambda and `GET /patients/{patient_id}/discharge-letters` route have been deployed to the API in `VITE_API_URL`. A missing API Gateway route can appear as a browser network/CORS error. After deployment, choose **Refresh jobs**.
 - **Assistant unavailable or timed out:** retry temporary errors. For HTTP 422, edit the question; for HTTP 404, select an authorized patient. The frontend does not display internal API error details.
 - **Generation response lost or HTTP 503:** use **Retry generation** to reuse the original idempotency key. Creating a deliberately new generation can create another backend job.
 - **Draft conflict (HTTP 409):** reload the latest draft before editing or reviewing again. Reloading replaces local unsaved edits after confirmation.
 - **Missing section cannot be edited:** the current text-only editor preserves documented status and evidence references. Missing information must be addressed in the clinical source workflow before a new generation; the frontend cannot establish new evidence.
-- **Discharge job failed:** the panel reports failure and allows a deliberately new generation. Existing jobs remain in backend storage, but this frontend has no history lookup.
+- **Discharge job failed:** the panel reports failure and allows a deliberately new generation. The failed job remains visible in the patient's discharge job history.
 
 See Amplify's documentation for [using existing Cognito resources](https://docs.amplify.aws/react/build-a-backend/auth/use-existing-cognito-resources/) and [listening to auth events](https://docs.amplify.aws/gen1/react/build-a-backend/auth/auth-events/).

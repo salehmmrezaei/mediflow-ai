@@ -118,6 +118,161 @@ describe('DischargeLetter', () => {
     expect(getDraft).not.toHaveBeenCalled()
   })
 
+  it('collapses and expands job rows without closing the selected letter or toggling on refresh', async () => {
+    listJobs.mockResolvedValue([job])
+    render(<DischargeLetter patient={alice} />)
+    fireEvent.click(await screen.findByRole('button', { name: `Open job ${job.job_id}` }))
+    await screen.findByRole('button', { name: 'Edit Draft' })
+    const toggle = screen.getByRole('button', { name: 'Discharge letter jobs' })
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(screen.getByRole('table', { name: 'Discharge letter jobs' })).toBeTruthy()
+
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByRole('table', { name: 'Discharge letter jobs' })).toBeNull()
+    for (const name of SECTION_NAMES) {
+      expect(screen.getByRole('heading', { name: SECTION_LABELS[name] })).toBeTruthy()
+    }
+    expect(screen.getByRole('button', { name: 'Edit Draft' })).toBeTruthy()
+    expect(listJobs).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh jobs' }))
+    await waitFor(() => expect(listJobs).toHaveBeenCalledTimes(2))
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByRole('table', { name: 'Discharge letter jobs' })).toBeNull()
+
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    const table = screen.getByRole('table', { name: 'Discharge letter jobs' })
+    expect(within(table).getByText(job.job_id)).toBeTruthy()
+    expect(within(table).getByRole('button', { name: `Open job ${job.job_id}` }).getAttribute('aria-pressed')).toBe('true')
+    expect(getDraft).toHaveBeenCalledTimes(1)
+    expect(createJob).not.toHaveBeenCalled()
+  })
+
+  it('starts a distinct letter while viewing a pending draft and retains both jobs in history', async () => {
+    await showDraft()
+    const nextJob: DischargeJob = { ...job, job_id: 'new-discharge-job', created_at: newerTimestamp, updated_at: newerTimestamp }
+    const nextDraft = draftResponse({ job_id: nextJob.job_id, updated_at: newerTimestamp })
+    nextDraft.draft.admission_reason.text = 'Admission evidence for the new discharge letter.'
+    const request = deferred<DischargeJob>()
+    createJob.mockReturnValueOnce(request.promise)
+    getDraft.mockResolvedValueOnce(nextDraft)
+    const originalKey = createJob.mock.calls[0][1]
+    const generateNew = screen.getByRole('button', { name: 'Generate New Discharge Letter' }) as HTMLButtonElement
+    expect(generateNew.disabled).toBe(false)
+    fireEvent.click(generateNew)
+    fireEvent.click(generateNew)
+    expect(createJob).toHaveBeenCalledTimes(2)
+    expect(createJob.mock.calls[1][1]).not.toBe(originalKey)
+    expect(createJob.mock.calls[1][0]).toBe(alice.patient_id)
+    await act(async () => { request.resolve(nextJob) })
+    await screen.findByText(nextDraft.draft.admission_reason.text)
+    const table = screen.getByRole('table', { name: 'Discharge letter jobs' })
+    expect(within(table).getByText(job.job_id)).toBeTruthy()
+    expect(within(table).getByText(nextJob.job_id)).toBeTruthy()
+    expect(screen.queryByText('Synthetic admission for observation.')).toBeNull()
+    expect((screen.getByRole('button', { name: 'Generate New Discharge Letter' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('retains the existing draft and keeps an uncertain new-generation retry accessible', async () => {
+    await showDraft()
+    const nextJob = { ...job, job_id: 'new-discharge-job', created_at: newerTimestamp, updated_at: newerTimestamp }
+    const nextDraft = draftResponse({ job_id: nextJob.job_id, updated_at: newerTimestamp })
+    nextDraft.draft.admission_reason.text = 'Admission evidence for the recovered new letter.'
+    createJob.mockRejectedValueOnce(new DischargeLetterError('The discharge request took too long.', true, 504))
+      .mockResolvedValueOnce(nextJob)
+    getDraft.mockResolvedValueOnce(nextDraft)
+    fireEvent.click(screen.getByRole('button', { name: 'Generate New Discharge Letter' }))
+    const retry = await screen.findByRole('button', { name: 'Retry generation' })
+    expect(screen.getByText('Synthetic admission for observation.')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Generate New Discharge Letter' }) as HTMLButtonElement).disabled).toBe(true)
+    const edit = screen.getByRole('button', { name: 'Edit Draft' }) as HTMLButtonElement
+    expect(edit.disabled).toBe(true)
+    fireEvent.click(edit)
+    expect(screen.queryByRole('textbox', { name: SECTION_LABELS.admission_reason })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Retry generation' })).toBe(retry)
+    fireEvent.click(retry)
+    await screen.findByText(nextDraft.draft.admission_reason.text)
+    expect(createJob.mock.calls[2][1]).toBe(createJob.mock.calls[1][1])
+    expect((screen.getByRole('button', { name: 'Generate New Discharge Letter' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('pauses old-job polling while a new-generation result is uncertain and resumes with the recovered job', async () => {
+    vi.useFakeTimers()
+    listJobs.mockResolvedValue([{ ...job, status: 'PROCESSING' }])
+    getJob.mockRejectedValue(new DischargeLetterError('Old job status lookup failed.', true, 503))
+    const nextJob: DischargeJob = { ...job, job_id: 'recovered-new-job', status: 'QUEUED', created_at: newerTimestamp, updated_at: newerTimestamp }
+    createJob.mockRejectedValueOnce(new DischargeLetterError('The new generation request timed out.', true, 504))
+      .mockResolvedValueOnce(nextJob)
+    const nextDraft = draftResponse({ job_id: nextJob.job_id, updated_at: newerTimestamp })
+    nextDraft.draft.admission_reason.text = 'The recovered job is now ready for review.'
+    getDraft.mockResolvedValueOnce(nextDraft)
+    render(<DischargeLetter patient={alice} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: `Open job ${job.job_id}` }))
+    fireEvent.click(screen.getByRole('button', { name: 'Generate New Discharge Letter' }))
+    await act(async () => {})
+    expect(screen.getByRole('button', { name: 'Retry generation' })).toBeTruthy()
+    await act(async () => { await vi.advanceTimersByTimeAsync(12000) })
+    expect(getJob).not.toHaveBeenCalled()
+    expect(screen.getByText('The new generation request timed out.')).toBeTruthy()
+    expect(screen.queryByText('Old job status lookup failed.')).toBeNull()
+
+    getJob.mockResolvedValue({ ...nextJob, status: 'PENDING_REVIEW' })
+    fireEvent.click(screen.getByRole('button', { name: 'Retry generation' }))
+    await act(async () => {})
+    expect(createJob.mock.calls[1][1]).toBe(createJob.mock.calls[0][1])
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(getJob).toHaveBeenCalledTimes(1)
+    expect(getJob).toHaveBeenCalledWith(nextJob.job_id, expect.any(AbortSignal))
+    expect(screen.getByText(nextDraft.draft.admission_reason.text)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Edit Draft' })).toBeTruthy()
+  })
+
+  it('resumes tracking the previous job after a definitive new-generation rejection', async () => {
+    vi.useFakeTimers()
+    listJobs.mockResolvedValue([{ ...job, status: 'PROCESSING' }])
+    createJob.mockRejectedValueOnce(new DischargeLetterError('The new generation request was rejected.', false, 422))
+    getJob.mockResolvedValueOnce(job)
+    render(<DischargeLetter patient={alice} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: `Open job ${job.job_id}` }))
+    fireEvent.click(screen.getByRole('button', { name: 'Generate New Discharge Letter' }))
+    await act(async () => {})
+    expect(screen.getByText('The new generation request was rejected.')).toBeTruthy()
+    expect((screen.getByRole('button', { name: 'Generate New Discharge Letter' }) as HTMLButtonElement).disabled).toBe(false)
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(getJob).toHaveBeenCalledWith(job.job_id, expect.any(AbortSignal))
+    expect(getDraft).toHaveBeenCalledWith(job.job_id, expect.any(AbortSignal))
+    expect(screen.getByRole('button', { name: 'Edit Draft' })).toBeTruthy()
+  })
+
+  it.each(['QUEUED', 'PROCESSING'] as const)('starts a new letter from a %s job and ignores its late status response', async (status) => {
+    vi.useFakeTimers()
+    listJobs.mockResolvedValue([{ ...job, status }])
+    const lateStatus = deferred<DischargeJob>()
+    getJob.mockReturnValueOnce(lateStatus.promise)
+    const nextJob = { ...job, job_id: 'new-discharge-job', created_at: newerTimestamp, updated_at: newerTimestamp }
+    createJob.mockResolvedValueOnce(nextJob)
+    const nextDraft = draftResponse({ job_id: nextJob.job_id, updated_at: newerTimestamp })
+    nextDraft.draft.admission_reason.text = 'Only the newly generated letter should be shown.'
+    getDraft.mockResolvedValueOnce(nextDraft)
+    render(<DischargeLetter patient={alice} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: `Open job ${job.job_id}` }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    const oldSignal = getJob.mock.calls[0][1]!
+    fireEvent.click(screen.getByRole('button', { name: 'Generate New Discharge Letter' }))
+    await act(async () => {})
+    expect(oldSignal.aborted).toBe(true)
+    expect(screen.getByText(nextDraft.draft.admission_reason.text)).toBeTruthy()
+    await act(async () => { lateStatus.resolve(job) })
+    expect(screen.getByText(nextDraft.draft.admission_reason.text)).toBeTruthy()
+    expect(getDraft).toHaveBeenCalledTimes(1)
+    expect(getDraft).toHaveBeenCalledWith(nextJob.job_id, expect.any(AbortSignal))
+  })
+
   it('opens an existing letter and preserves a newer review when an older history refresh completes', async () => {
     const refresh = deferred<DischargeJob[]>()
     listJobs.mockResolvedValueOnce([job]).mockReturnValueOnce(refresh.promise)
@@ -154,13 +309,18 @@ describe('DischargeLetter', () => {
     await screen.findByRole('button', { name: 'Edit Draft' })
     editAdmission('Unsaved fictional admission details.')
     const openOther = screen.getByRole('button', { name: `Open job ${otherJob.job_id}` }) as HTMLButtonElement
+    const generateNew = screen.getByRole('button', { name: 'Generate New Discharge Letter' }) as HTMLButtonElement
     expect(openOther.disabled).toBe(true)
+    expect(generateNew.disabled).toBe(true)
     fireEvent.click(openOther)
+    fireEvent.click(generateNew)
+    expect(createJob).not.toHaveBeenCalled()
     expect((screen.getByRole('textbox', { name: SECTION_LABELS.admission_reason }) as HTMLTextAreaElement).value)
       .toBe('Unsaved fictional admission details.')
     expect(getDraft).toHaveBeenCalledTimes(1)
     fireEvent.click(screen.getByRole('button', { name: 'Cancel edits' }))
     expect(openOther.disabled).toBe(false)
+    expect(generateNew.disabled).toBe(false)
   })
 
   it('keeps an uncertain generation retry accessible before opening another historical job', async () => {

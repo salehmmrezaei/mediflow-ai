@@ -1,5 +1,6 @@
 
 import uuid
+from unittest.mock import MagicMock
 from app.services import discharge_workflow
 import pytest
 from botocore.exceptions import ClientError
@@ -229,6 +230,10 @@ def test_unknown_job_returns_404():
             "get",
             "/discharge-jobs/some-job-id",
         ),
+        (
+            "get",
+            "/patients/PATIENT-A/discharge-letters",
+        ),
     ],
 )
 def test_unauthenticated_requests_rejected(method, path):
@@ -301,6 +306,51 @@ def test_database_error_during_status_returns_503(
     )
 
     assert response.status_code == 503
+
+
+def test_list_patient_jobs_returns_summaries_only(fake_database, monkeypatch):
+    authenticate("DOCTOR-A")
+    created = create_job().json()
+    stored = fake_database.items[created["job_id"]]
+    stored["draft"] = {"text": "Private draft content"}
+    monkeypatch.setattr(
+        fake_database,
+        "scan",
+        MagicMock(return_value={"Items": [stored]}),
+        raising=False,
+    )
+
+    response = client.get(CREATE_URL)
+
+    assert response.status_code == 200
+    assert response.json() == [created]
+
+
+@pytest.mark.parametrize("patient_id", ["PATIENT-C", "UNKNOWN-PATIENT"])
+def test_list_jobs_rejects_unavailable_patient(patient_id, fake_database, monkeypatch):
+    authenticate("DOCTOR-A")
+    scan = MagicMock()
+    monkeypatch.setattr(fake_database, "scan", scan, raising=False)
+
+    response = client.get(f"/patients/{patient_id}/discharge-letters")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Patient not found"}
+    scan.assert_not_called()
+
+
+def test_list_jobs_storage_error_returns_503(fake_database, monkeypatch):
+    authenticate("DOCTOR-A")
+    scan = MagicMock(side_effect=ClientError(
+        {"Error": {"Code": "InternalServerError", "Message": "Unavailable"}},
+        "Scan",
+    ))
+    monkeypatch.setattr(fake_database, "scan", scan, raising=False)
+
+    response = client.get(CREATE_URL)
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Discharge job storage unavailable"}
 
 
 

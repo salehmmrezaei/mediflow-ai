@@ -6,6 +6,7 @@ import {
   DischargeLetterError,
   getDischargeDraft,
   getDischargeJob,
+  listDischargeJobs,
   MISSING_TEXT,
   reviewDischargeDraft,
   saveDischargeDraft,
@@ -22,6 +23,7 @@ vi.mock('../api/dischargeLetters', async (importOriginal) => ({
   ...await importOriginal<typeof import('../api/dischargeLetters')>(),
   createDischargeJob: vi.fn(),
   getDischargeJob: vi.fn(),
+  listDischargeJobs: vi.fn(),
   getDischargeDraft: vi.fn(),
   saveDischargeDraft: vi.fn(),
   reviewDischargeDraft: vi.fn(),
@@ -29,6 +31,7 @@ vi.mock('../api/dischargeLetters', async (importOriginal) => ({
 
 const createJob = vi.mocked(createDischargeJob)
 const getJob = vi.mocked(getDischargeJob)
+const listJobs = vi.mocked(listDischargeJobs)
 const getDraft = vi.mocked(getDischargeDraft)
 const saveDraft = vi.mocked(saveDischargeDraft)
 const reviewDraft = vi.mocked(reviewDischargeDraft)
@@ -85,6 +88,7 @@ function editAdmission(value: string) {
 }
 
 beforeEach(() => {
+  listJobs.mockReset().mockResolvedValue([])
   createJob.mockReset().mockResolvedValue(job)
   getJob.mockReset().mockResolvedValue(job)
   getDraft.mockReset().mockResolvedValue(draftResponse())
@@ -98,6 +102,111 @@ describe('DischargeLetter', () => {
   it('requires a selected patient and never starts a request implicitly', () => {
     render(<DischargeLetter patient={null} />)
     expect((screen.getByRole('button', { name: 'Generate Discharge Letter' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(createJob).not.toHaveBeenCalled()
+    expect(listJobs).not.toHaveBeenCalled()
+    expect(screen.queryByRole('table', { name: 'Discharge letter jobs' })).toBeNull()
+  })
+
+  it('loads the selected patient’s saved jobs without starting a generation', async () => {
+    listJobs.mockResolvedValue([job])
+    render(<DischargeLetter patient={alice} />)
+    const table = await screen.findByRole('table', { name: 'Discharge letter jobs' })
+    expect(await within(table).findByText(job.job_id)).toBeTruthy()
+    expect(within(table).getByText('Pending review')).toBeTruthy()
+    expect(listJobs).toHaveBeenCalledWith(alice.patient_id, expect.any(AbortSignal))
+    expect(createJob).not.toHaveBeenCalled()
+    expect(getDraft).not.toHaveBeenCalled()
+  })
+
+  it('opens an existing letter and preserves a newer review when an older history refresh completes', async () => {
+    const refresh = deferred<DischargeJob[]>()
+    listJobs.mockResolvedValueOnce([job]).mockReturnValueOnce(refresh.promise)
+    const rejected = draftResponse({ status: 'REJECTED', document_state: 'REJECTED_DRAFT',
+      updated_at: newerTimestamp, review_note: 'Needs further supporting notes.' })
+    reviewDraft.mockResolvedValue(rejected)
+    render(<DischargeLetter patient={alice} />)
+    fireEvent.click(await screen.findByRole('button', { name: `Open job ${job.job_id}` }))
+    await screen.findByRole('button', { name: 'Reject Draft' })
+    expect(getDraft).toHaveBeenCalledWith(job.job_id, expect.any(AbortSignal))
+    expect(createJob).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh jobs' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reject Draft' }))
+    const dialog = screen.getByRole('dialog', { name: 'Reject discharge draft?' })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Rejection reason' }), {
+      target: { value: rejected.review_note },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm rejection' }))
+    const table = screen.getByRole('table', { name: 'Discharge letter jobs' })
+    await within(table).findByText('Rejected')
+    expect(within(table).queryByText('Pending review')).toBeNull()
+    expect(table.querySelector(`time[datetime="${newerTimestamp}"]`)).toBeTruthy()
+    await act(async () => { refresh.resolve([job]) })
+    expect(within(table).getByText('Rejected')).toBeTruthy()
+    expect(within(table).queryByText('Pending review')).toBeNull()
+    expect(table.querySelector(`time[datetime="${newerTimestamp}"]`)).toBeTruthy()
+  })
+
+  it('keeps unsaved edits intact until they are saved or cancelled before another job can open', async () => {
+    const otherJob = { ...job, job_id: 'other-saved-job' }
+    listJobs.mockResolvedValue([job, otherJob])
+    render(<DischargeLetter patient={alice} />)
+    fireEvent.click(await screen.findByRole('button', { name: `Open job ${job.job_id}` }))
+    await screen.findByRole('button', { name: 'Edit Draft' })
+    editAdmission('Unsaved fictional admission details.')
+    const openOther = screen.getByRole('button', { name: `Open job ${otherJob.job_id}` }) as HTMLButtonElement
+    expect(openOther.disabled).toBe(true)
+    fireEvent.click(openOther)
+    expect((screen.getByRole('textbox', { name: SECTION_LABELS.admission_reason }) as HTMLTextAreaElement).value)
+      .toBe('Unsaved fictional admission details.')
+    expect(getDraft).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel edits' }))
+    expect(openOther.disabled).toBe(false)
+  })
+
+  it('keeps an uncertain generation retry accessible before opening another historical job', async () => {
+    const historicalJob = { ...job, job_id: 'saved-historical-job' }
+    listJobs.mockResolvedValue([historicalJob])
+    createJob.mockRejectedValueOnce(new DischargeLetterError('The discharge request took too long.', true, 504))
+      .mockResolvedValueOnce(job)
+    render(<DischargeLetter patient={alice} />)
+    const openHistorical = await screen.findByRole('button', { name: `Open job ${historicalJob.job_id}` }) as HTMLButtonElement
+    generate()
+    const retry = await screen.findByRole('button', { name: 'Retry generation' })
+    expect(openHistorical.disabled).toBe(true)
+    fireEvent.click(openHistorical)
+    expect(screen.getByRole('button', { name: 'Retry generation' })).toBe(retry)
+    expect(getDraft).not.toHaveBeenCalled()
+    fireEvent.click(retry)
+    await screen.findByRole('button', { name: 'Edit Draft' })
+    expect(createJob.mock.calls[1][1]).toBe(createJob.mock.calls[0][1])
+    expect(openHistorical.disabled).toBe(false)
+  })
+
+  it('clears history immediately and cancels its request when selecting another patient', async () => {
+    const request = deferred<DischargeJob[]>()
+    const bobJob = { ...job, job_id: 'saved-bob-job', patient_id: bob.patient_id, status: 'FAILED' as const }
+    listJobs.mockReturnValueOnce(request.promise).mockResolvedValueOnce([bobJob])
+    const { rerender } = render(<DischargeLetter patient={alice} />)
+    const signal = listJobs.mock.calls[0][1]!
+    rerender(<DischargeLetter patient={bob} />)
+    expect(signal.aborted).toBe(true)
+    expect(screen.queryByText(job.job_id)).toBeNull()
+    await screen.findByText(bobJob.job_id)
+    await act(async () => { request.resolve([job]) })
+    expect(screen.queryByText(job.job_id)).toBeNull()
+    expect(screen.getByText(bobJob.job_id)).toBeTruthy()
+    expect(listJobs).toHaveBeenLastCalledWith(bob.patient_id, expect.any(AbortSignal))
+  })
+
+  it('offers a history refresh after a load failure without creating another letter', async () => {
+    listJobs.mockRejectedValueOnce(new DischargeLetterError('Unable to load discharge jobs.', true))
+      .mockResolvedValueOnce([job])
+    render(<DischargeLetter patient={alice} />)
+    await screen.findByText('Unable to load discharge jobs.')
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh jobs' }))
+    const table = await screen.findByRole('table', { name: 'Discharge letter jobs' })
+    await within(table).findByText(job.job_id)
+    expect(listJobs).toHaveBeenCalledTimes(2)
     expect(createJob).not.toHaveBeenCalled()
   })
 
@@ -161,9 +270,9 @@ describe('DischargeLetter', () => {
     const { unmount } = render(<DischargeLetter patient={alice} />)
     generate()
     await act(async () => {})
-    expect(screen.getByText(/^Queued$/i)).toBeTruthy()
+    expect(screen.getAllByText(/^Queued$/i).length).toBeGreaterThan(0)
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
-    expect(screen.getByText(/^Processing$/i)).toBeTruthy()
+    expect(screen.getAllByText(/^Processing$/i).length).toBeGreaterThan(0)
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
     expect(screen.getByRole('button', { name: 'Edit Draft' })).toBeTruthy()
     expect(getDraft).toHaveBeenCalledWith(job.job_id, expect.any(AbortSignal))
@@ -488,7 +597,7 @@ describe('DischargeLetter', () => {
     createJob.mockResolvedValue({ ...job, status: 'FAILED' })
     render(<DischargeLetter patient={alice} />)
     generate()
-    await waitFor(() => expect(screen.getByText(/^Failed$/i)).toBeTruthy())
+    await waitFor(() => expect(screen.getAllByText(/^Failed$/i).length).toBeGreaterThan(0))
     expect(screen.getByRole('alert').textContent).toMatch(/fail|could not/i)
     expect(getDraft).not.toHaveBeenCalled()
     expect(getJob).not.toHaveBeenCalled()
@@ -498,7 +607,7 @@ describe('DischargeLetter', () => {
     createJob.mockResolvedValueOnce({ ...job, status: 'FAILED' }).mockResolvedValueOnce(job)
     render(<DischargeLetter patient={alice} />)
     generate()
-    await screen.findByText(/^Failed$/i)
+    await screen.findAllByText(/^Failed$/i)
     fireEvent.click(screen.getByRole('button', { name: /Generate New Discharge Letter/i }))
     await screen.findByRole('button', { name: 'Edit Draft' })
     expect(createJob).toHaveBeenCalledTimes(2)

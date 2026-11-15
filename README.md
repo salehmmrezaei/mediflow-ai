@@ -19,6 +19,7 @@ patient records only.
 - Patient-specific access controls
 - Evidence-grounded clinical question answering
 - Asynchronous discharge-letter generation
+- Discharge job history for each doctor and selected patient, with progress tracking and access to saved letters
 - Structured AI outputs with note references
 - Explicit identification of missing clinical information
 - Doctor editing, approval, and rejection workflows

@@ -6,16 +6,13 @@ import {
   type DischargeDraft, type DischargeDraftResponse, type DischargeJob, type DischargeStatus,
 } from '../api/dischargeLetters'
 import type { Patient } from '../api/patients'
+import { DischargeJobHistory, DISCHARGE_STATUS_LABELS } from './DischargeJobHistory'
 import './DischargeLetter.css'
 
 type Props = { patient: Patient | null }
 type Operation = 'create' | 'status' | 'draft' | 'save' | 'review'
 type PanelError = { message: string; status?: number; retryable: boolean; operation: Operation }
 type Confirmation = 'APPROVE' | 'REJECT' | 'reload' | null
-const statusLabels: Record<DischargeStatus, string> = {
-  QUEUED: 'Queued', PROCESSING: 'Processing', PENDING_REVIEW: 'Pending review',
-  APPROVED: 'Approved', REJECTED: 'Rejected', FAILED: 'Failed',
-}
 const isProcessing = (status?: DischargeStatus) => status === 'QUEUED' || status === 'PROCESSING'
 
 // Keyed state is replaced during render, before effects, just as in the assistant.
@@ -192,6 +189,18 @@ function PatientDischargeLetter({ patient }: Props) {
     })
   }
 
+  function openJob(value: DischargeJob) {
+    if (locked || editor || inFlight.current || submissionKey.current) return
+    ensureIdentity(value)
+    monitor.current?.abort()
+    setDocument(null)
+    setEditor(null)
+    setError(null)
+    setSuccess('')
+    setConfirmation(null)
+    setJob(value)
+  }
+
   function save() {
     if (!document || !editor || !pending || validateDischargeDraft(editor)) return
     void perform('save', async (signal) => {
@@ -289,6 +298,8 @@ function PatientDischargeLetter({ patient }: Props) {
           <div className="discharge-context"><span className="clinical-assistant-label">Selected patient</span>
             <strong>{patient.first_name} {patient.last_name}</strong><span className="patient-id">{patient.patient_id}</span></div>
         ) : <p className="muted">Select a patient to generate a discharge letter.</p>}
+        {patient && <DischargeJobHistory patientId={patient.patient_id} currentJob={job}
+          disabled={locked} editing={Boolean(editor)} pendingSubmission={hasSubmissionKey} onOpen={openJob} />}
         <p className="discharge-disclaimer">AI-generated draft — Requires doctor review — Not signed</p>
         {(!job || ['FAILED', 'APPROVED', 'REJECTED'].includes(job.status)) && (
           <button type="button" className="primary-button" onClick={() => generate()}
@@ -297,7 +308,7 @@ function PatientDischargeLetter({ patient }: Props) {
           </button>
         )}
         {job && <div className="discharge-progress" role="status">
-          <span className={`discharge-status discharge-status-${job.status.toLowerCase()}`}>{statusLabels[job.status]}</span>
+          <span className={`discharge-status discharge-status-${job.status.toLowerCase()}`}>{DISCHARGE_STATUS_LABELS[job.status]}</span>
           {active && <><span className="loading-indicator" aria-hidden="true" />
             <span>{error?.operation === 'status' ? 'Monitoring paused. Retry to check progress.' : 'Preparing the draft. Checking progress every three seconds…'}</span></>}
           {loadingDraft && <span>Loading discharge draft…</span>}
@@ -350,7 +361,7 @@ function PatientDischargeLetter({ patient }: Props) {
           </div>}
         </>}
         {success && <p className="discharge-success" role="status">{success}</p>}
-        <p className="discharge-session-note muted">Active tracking lasts while this patient stays selected. Switching patients, signing out, or reloading clears it. Background jobs may continue; job history is not available yet.</p>
+        <p className="discharge-session-note muted">Select a patient to load your discharge letter jobs. Open a job to resume tracking or review its letter. Unsaved edits are cleared when you switch patients, sign out, or reload.</p>
       </div>
       {confirmation === 'reload' && <ConfirmationDialog title="Reload latest draft?" busy={locked} onClose={() => setConfirmation(null)}>
         <p>Reloading will discard your unsaved edits and retrieve the latest server version.</p>

@@ -1,6 +1,7 @@
 import uuid
 from unittest.mock import MagicMock
 import pytest
+from boto3.dynamodb.conditions import Attr
 from botocore.exceptions import ClientError
 from app.repositories import discharge_job_repository as repo
 
@@ -160,3 +161,73 @@ def test_invalid_idempotency_key(jobs_table):
         )
 
     assert jobs_table.write_count == 0
+
+
+def test_history_filters_doctor_and_patient_and_reads_all_pages(
+    monkeypatch,
+    jobs_table,
+):
+    old = {
+        "job_id": "old-job",
+        "patient_id": "PATIENT-A",
+        "status": "APPROVED",
+        "created_at": "2026-11-13T09:00:00+00:00",
+        "updated_at": "2026-11-13T10:00:00+00:00",
+    }
+    recent = {
+        **old,
+        "job_id": "recent-job",
+        "status": "PENDING_REVIEW",
+        "created_at": "2026-11-14T09:00:00+00:00",
+    }
+    scan = MagicMock(side_effect=[
+        {"Items": [], "LastEvaluatedKey": {"job_id": "other-patient"}},
+        {"Items": [old], "LastEvaluatedKey": {"job_id": "old-job"}},
+        {"Items": [recent]},
+    ])
+    monkeypatch.setattr(jobs_table, "scan", scan, raising=False)
+
+    assert repo.list_discharge_jobs("PATIENT-A", "DOCTOR-A") == [recent, old]
+
+    assert scan.call_count == 3
+    for call in scan.call_args_list:
+        assert call.kwargs["FilterExpression"] == (
+            Attr("doctor_sub").eq("DOCTOR-A")
+            & Attr("patient_id").eq("PATIENT-A")
+        )
+        assert call.kwargs["ConsistentRead"] is True
+        assert "draft" not in call.kwargs["ProjectionExpression"]
+
+    assert "ExclusiveStartKey" not in scan.call_args_list[0].kwargs
+    assert scan.call_args_list[1].kwargs["ExclusiveStartKey"] == {
+        "job_id": "other-patient"
+    }
+    assert scan.call_args_list[2].kwargs["ExclusiveStartKey"] == {
+        "job_id": "old-job"
+    }
+
+
+def test_empty_job_history(monkeypatch, jobs_table):
+    monkeypatch.setattr(
+        jobs_table,
+        "scan",
+        MagicMock(return_value={"Items": []}),
+        raising=False,
+    )
+
+    assert repo.list_discharge_jobs("PATIENT-A", "DOCTOR-A") == []
+
+
+def test_history_denies_patient_access_before_reading_jobs(monkeypatch):
+    monkeypatch.setattr(
+        repo.patient_repository,
+        "get_patient",
+        lambda patient_id, doctor_sub: None,
+    )
+    table = MagicMock()
+    monkeypatch.setattr(repo, "get_jobs_table", table)
+
+    with pytest.raises(repo.PatientAccessDeniedError):
+        repo.list_discharge_jobs("PATIENT-A", "DOCTOR-B")
+
+    table.assert_not_called()

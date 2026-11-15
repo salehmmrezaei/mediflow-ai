@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getPatients, type Patient } from '../api/patients'
 import { askPatientQuestion, type ClinicalAnswer } from '../api/clinicalAssistant'
 import {
-  createDischargeJob, getDischargeDraft, getDischargeJob, saveDischargeDraft, reviewDischargeDraft,
+  createDischargeJob, getDischargeDraft, getDischargeJob, listDischargeJobs, saveDischargeDraft, reviewDischargeDraft,
   SECTION_NAMES, type DischargeDraft, type DischargeDraftResponse, type DischargeJob,
 } from '../api/dischargeLetters'
 import { PatientDashboard } from './PatientDashboard'
@@ -17,6 +17,7 @@ vi.mock('../api/dischargeLetters', async (importOriginal) => ({
   ...await importOriginal<typeof import('../api/dischargeLetters')>(),
   createDischargeJob: vi.fn(),
   getDischargeJob: vi.fn(),
+  listDischargeJobs: vi.fn(),
   getDischargeDraft: vi.fn(),
   saveDischargeDraft: vi.fn(),
   reviewDischargeDraft: vi.fn(),
@@ -50,6 +51,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  vi.mocked(listDischargeJobs).mockReset().mockResolvedValue([])
   vi.mocked(getPatients).mockReset().mockResolvedValue(patients)
   vi.mocked(askPatientQuestion).mockReset()
   vi.mocked(createDischargeJob).mockReset().mockResolvedValue(dischargeJob)

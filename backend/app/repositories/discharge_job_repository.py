@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 import boto3
+from boto3.dynamodb.conditions import Attr
 from botocore.exceptions import ClientError
 
 from app.models.discharge_job import DischargeJobStatus
@@ -126,3 +127,42 @@ def get_discharge_job(
         return None
 
     return job
+
+
+def list_discharge_jobs(
+    patient_id: str,
+    doctor_sub: str,
+) -> list[dict]:
+    if patient_repository.get_patient(patient_id, doctor_sub) is None:
+        raise PatientAccessDeniedError(
+            "Patient not found or access denied"
+        )
+
+    table = get_jobs_table()
+    jobs = []
+    scan_kwargs = {
+        "FilterExpression": (
+            Attr("doctor_sub").eq(doctor_sub)
+            & Attr("patient_id").eq(patient_id)
+        ),
+        "ProjectionExpression": (
+            "job_id, patient_id, #status, created_at, updated_at"
+        ),
+        "ExpressionAttributeNames": {"#status": "status"},
+        "ConsistentRead": True,
+    }
+
+    while True:
+        response = table.scan(**scan_kwargs)
+        jobs.extend(response.get("Items", []))
+
+        if not response.get("LastEvaluatedKey"):
+            break
+
+        scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+
+    return sorted(
+        jobs,
+        key=lambda job: (job["created_at"], job["job_id"]),
+        reverse=True,
+    )

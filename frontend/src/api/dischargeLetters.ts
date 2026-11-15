@@ -253,6 +253,14 @@ export async function createDischargeJob(patientId: string, idempotencyKey: stri
   return job
 }
 
+/** The authenticated backend scopes history to the current doctor and patient. */
+export async function listDischargeJobs(patientId: string, signal?: AbortSignal): Promise<DischargeJob[]> {
+  if (!patientId.trim()) throw new DischargeLetterError('Select a patient to view discharge letter jobs.')
+  return dischargeRequest(`/patients/${encodeURIComponent(patientId)}/discharge-letters`, {},
+    (value): value is DischargeJob[] => Array.isArray(value)
+      && value.every((job) => isJob(job) && job.patient_id === patientId), signal)
+}
+
 export async function getDischargeJob(jobId: string, signal?: AbortSignal): Promise<DischargeJob> {
   const job = await dischargeRequest(`/discharge-jobs/${encodeURIComponent(jobId)}`, {}, isJob, signal)
   if (job.job_id !== jobId) throw invalidResponse()
